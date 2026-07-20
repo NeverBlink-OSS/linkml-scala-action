@@ -11,7 +11,7 @@
     "url": "git+https://github.com/NeverBlink-OSS/linkml-scala-action.git"
   },
   "scripts": {
-    "build": "esbuild src/index.js --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs",
+    "build": "esbuild src/index.js --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs",
     "test": "node test/run.mjs",
     "coverage": "cross-env ACTION_ENTRY=src/index.js c8 node test/run.mjs"
   },
