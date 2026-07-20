@@ -1,6 +1,6 @@
 {
   "name": "linkml-scala-action",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "type": "module",
   "description": "GitHub Action to validate and generate from LinkML schemas using linkml-scala. Pure Node.js.",
@@ -16,11 +16,16 @@
     "coverage": "cross-env ACTION_ENTRY=src/index.js c8 node test/run.mjs"
   },
   "c8": {
-    "include": ["src/**"],
-    "reporter": ["text", "text-summary"]
+    "include": [
+      "src/**"
+    ],
+    "reporter": [
+      "text",
+      "text-summary"
+    ]
   },
   "dependencies": {
-    "@neverblink/linkml": "0.9.2"
+    "@neverblink/linkml": "0.9.3"
   },
   "devDependencies": {
     "c8": "^10.1.0",
