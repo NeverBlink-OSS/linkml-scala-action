@@ -91,7 +91,12 @@ Fail the build on warnings too:
 
 ## Versioning
 
-The linkml-scala engine version is bundled into each release of this action. The action version tracks the engine version (e.g. `@v0.9.2`). Pin to the moving major tag `@v1` for automatic patch/minor updates, or to an exact tag for reproducibility.
+The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version:
+
+- Pin an **exact tag** (e.g. `@v0.9.2`) for reproducibility.
+- Pin the **moving major tag** `@v1` for automatic patch/minor updates.
+
+New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, and – only if that passes – cuts the matching `vX.Y.Z` release and advances `vX`. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).
 
 ## Development
 

@@ -1,0 +1,145 @@
+name: track-linkml-scala
+
+# Periodically checks for a new @neverblink/linkml (linkml-scala) release, and if
+# found: bumps the bundled engine, rebuilds dist/, re-runs the test suite against
+# the new engine, and cuts a matching release.
+#
+# Versioning (per README):
+#   - the action version tracks the engine version  -> exact tag  vX.Y.Z
+#   - a moving major tag gives automatic patch/minor -> moving tag v1
+#     (v1 is the action's own major line; bump it manually only on a breaking
+#     change to the action itself, not on engine releases.)
+#
+# npm (not the GitHub release) is the source of truth, since that is what the
+# action actually bundles – this avoids racing a release whose npm publish is
+# not yet available.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "linkml-scala version to release (e.g. 0.9.3). Blank = latest on npm."
+        required: false
+        default: ""
+      dry_run:
+        description: "Build and test only; do not commit, tag, or release."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: track-linkml-scala
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    # Don't run the schedule on forks.
+    if: github.event_name != 'schedule' || github.repository == 'NeverBlink-OSS/linkml-scala-action'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags, needed for tagging
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve target and current versions
+        id: versions
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            target="${INPUT_VERSION#v}"
+          else
+            target="$(npm view @neverblink/linkml version)"
+          fi
+          current="$(node -p "require('./package.json').dependencies['@neverblink/linkml']")"
+          {
+            echo "target=$target"
+            echo "current=$current"
+          } >> "$GITHUB_OUTPUT"
+          echo "Current bundled: $current | Target: $target"
+
+      - name: Decide whether to release
+        id: check
+        env:
+          TARGET: ${{ steps.versions.outputs.target }}
+          CURRENT: ${{ steps.versions.outputs.current }}
+        run: |
+          set -euo pipefail
+          update=true
+          if [ "$TARGET" = "$CURRENT" ]; then
+            echo "Already bundling $TARGET; nothing to do."
+            update=false
+          elif git rev-parse -q --verify "refs/tags/v$TARGET" >/dev/null; then
+            echo "Tag v$TARGET already exists; nothing to do."
+            update=false
+          elif ! npm view "@neverblink/linkml@$TARGET" version >/dev/null 2>&1; then
+            echo "::error::@neverblink/linkml@$TARGET is not published on npm."
+            exit 1
+          fi
+          echo "update=$update" >> "$GITHUB_OUTPUT"
+
+      - name: Bump engine, rebuild, and test
+        if: steps.check.outputs.update == 'true'
+        env:
+          TARGET: ${{ steps.versions.outputs.target }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm install "@neverblink/linkml@$TARGET" --save-exact
+          npm version "$TARGET" --no-git-tag-version --allow-same-version
+          sed -i -E "s/const LINKML_VERSION = \"[^\"]*\";/const LINKML_VERSION = \"$TARGET\";/" src/index.js
+          npm run build
+          # Verify the action still behaves correctly against the new engine.
+          # A failure here blocks the release so a human can investigate.
+          npm test
+
+      - name: Commit, tag, and release
+        if: steps.check.outputs.update == 'true' && inputs.dry_run != true
+        env:
+          TARGET: ${{ steps.versions.outputs.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "chore: track linkml-scala $TARGET"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+
+          sha="$(git rev-parse HEAD)"
+
+          cat > release-notes.md <<EOF
+          Tracks [linkml-scala v$TARGET](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v$TARGET).
+
+          Bundles \`@neverblink/linkml@$TARGET\`.
+
+          - Pin \`uses: NeverBlink-OSS/linkml-scala-action@v$TARGET\` for reproducibility.
+          - Pin \`@v1\` for automatic patch/minor updates.
+          EOF
+
+          # Exact, immutable release tag (gh creates the tag at $sha).
+          gh release create "v$TARGET" --title "v$TARGET" --notes-file release-notes.md --target "$sha"
+          rm -f release-notes.md
+
+          # Moving major tag (the action's own major line).
+          git tag -f v1 "$sha"
+          git push -f origin v1
+
+          echo "Released v$TARGET and moved v1." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run summary
+        if: steps.check.outputs.update == 'true' && inputs.dry_run == true
+        env:
+          TARGET: ${{ steps.versions.outputs.target }}
+        run: |
+          echo "DRY RUN: would release v$TARGET and move v1 (build + tests passed)." | tee -a "$GITHUB_STEP_SUMMARY"
