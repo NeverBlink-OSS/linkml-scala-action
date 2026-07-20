@@ -1,0 +1,59 @@
+name: "LinkML (linkml-scala)"
+description: "Validate and generate from LinkML schemas in CI. Pure Node.js – no Docker, no external toolchain, no binary download."
+author: "NeverBlink"
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  command:
+    description: "What to run: 'validate' or 'generate'."
+    required: false
+    default: "validate"
+  files:
+    description: "Schema files to process. Space- or newline-separated; globs (including **) are supported."
+    required: true
+  strict:
+    description: "validate only: treat warnings as failures."
+    required: false
+    default: "false"
+  generator:
+    description: "generate only: json-schema | shacl | rdfs | linkml | table-schema | scala."
+    required: false
+    default: ""
+  output:
+    description: "generate only: output directory. One file per input schema is written here. If empty, output is printed to the job log."
+    required: false
+    default: ""
+  open:
+    description: "generate json-schema/shacl only: allow additional properties (open shapes)."
+    required: false
+    default: "false"
+  package:
+    description: "generate scala only: target package name."
+    required: false
+    default: "linkml"
+  imports:
+    description: "Optional directory of extra .yaml schemas to make available to `imports:` (keyed by filename)."
+    required: false
+    default: ""
+  annotations:
+    description: "Emit GitHub error/warning annotations for problems."
+    required: false
+    default: "true"
+  working-directory:
+    description: "Base directory for resolving `files`, `imports` and `output`."
+    required: false
+    default: "."
+
+outputs:
+  problems:
+    description: "Total number of problems found across all schemas."
+  files:
+    description: "Number of schema files processed."
+  linkml-version:
+    description: "The bundled linkml-scala version."
+
+runs:
+  using: "node20"
+  main: "dist/index.cjs"

@@ -1,0 +1,15 @@
+id: https://example.org/main
+name: main
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+  - shared          # resolved from the `imports` directory (shared.yaml)
+tree_root: Employee
+classes:
+  Employee:
+    tree_root: true
+    is_a: Party
+    attributes:
+      title:
+        range: string

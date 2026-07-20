@@ -1,0 +1,11 @@
+id: https://example.org/broken
+name: broken
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+classes:
+  Pet:
+    attributes:
+      owner:
+        range: NonExistentClass

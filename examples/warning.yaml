@@ -1,0 +1,13 @@
+id: https://example.org/warning
+name: warning
+# Intentionally omits `tree_root`, which linkml-scala reports as a warning
+# (not a fatal error). Used to test warning handling and `strict`.
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+classes:
+  Widget:
+    attributes:
+      label:
+        range: string
