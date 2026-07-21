@@ -117,35 +117,60 @@ const errMessage = (e) =>
     ""
   );
 
+// Parse the `ignore` input into lower-cased substrings, one per line. A problem
+// whose message contains any of these is silenced (not annotated, not counted,
+// no effect on the exit code) — but still logged, so it stays auditable.
+function parseIgnore() {
+  return getInput("ignore")
+    .split("\n")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const isIgnored = (line, ignore) =>
+  ignore.some((p) => line.toLowerCase().includes(p));
+
+// Problem message lines from a lint report or a thrown error, minus the
+// summary/header line.
+function problemLines(text) {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^Found \d+ problem/i.test(l) &&
+        !/^Fatal validation problems/i.test(l)
+    );
+}
+
 // ---------------------------------------------------------------------------
-function runValidate(files, pool, baseDir, strict) {
+function runValidate(files, pool, baseDir, strict, ignore) {
   let problems = 0;
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
-    let report;
+    let lines;
+    let fatal = false;
     try {
       // Fatal problems are thrown while resolving the schema; warnings come
       // back as a string from lint().
       const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
-      report = LinkML.lint(view);
+      const report = LinkML.lint(view);
+      lines = report ? problemLines(report) : [];
     } catch (e) {
-      problems++;
-      for (const line of errMessage(e).split("\n")) {
-        if (line.trim()) annotate("error", line.trim(), rel);
+      fatal = true;
+      lines = problemLines(errMessage(e));
+    }
+
+    let kept = 0;
+    for (const line of lines) {
+      if (isIgnored(line, ignore)) {
+        info(`  (ignored) ${line}`);
+        continue;
       }
-      fail(`${rel}: fatal validation problems`);
-      continue;
-    }
-    if (!report) {
-      info(`✓ ${rel}`);
-      continue;
-    }
-    for (const raw of report.split("\n")) {
-      const line = raw.trim();
-      if (!line || /^Found \d+ problem/i.test(line)) continue;
+      kept++;
       problems++;
-      const isWarning = /^warning/i.test(line);
-      if (isWarning) {
+      if (!fatal && /^warning/i.test(line)) {
         annotate("warning", line, rel);
         if (strict) process.exitCode = 1;
       } else {
@@ -153,7 +178,10 @@ function runValidate(files, pool, baseDir, strict) {
         process.exitCode = 1;
       }
     }
-    info(`${strict ? "✗" : "•"} ${rel}`);
+
+    if (fatal && kept > 0) fail(`${rel}: fatal validation problems`);
+    else if (kept === 0) info(`✓ ${rel}`);
+    else info(`${strict ? "✗" : "•"} ${rel}`);
   }
   return problems;
 }
@@ -166,7 +194,7 @@ function writeSingle(outDir, file, contents, ext) {
   info(`  → ${path.relative(process.cwd(), dest)}`);
 }
 
-function runGenerate(files, pool, baseDir, gen, genName, outDir) {
+function runGenerate(files, pool, baseDir, gen, genName, outDir, ignore) {
   let problems = 0;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
@@ -176,8 +204,19 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir) {
       const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
       result = gen.run(view);
     } catch (e) {
+      const kept = [];
+      for (const line of problemLines(errMessage(e))) {
+        if (isIgnored(line, ignore)) info(`  (ignored) ${line}`);
+        else kept.push(line);
+      }
+      if (kept.length === 0) {
+        // Every problem was silenced — nothing to fail on, but note that no
+        // output was produced for this schema.
+        info(`✓ ${rel} (problems ignored; no output generated)`);
+        continue;
+      }
       problems++;
-      annotate("error", errMessage(e), rel);
+      for (const line of kept) annotate("error", line, rel);
       fail(`${rel}: ${genName} generation failed`);
       continue;
     }
@@ -230,10 +269,11 @@ function main() {
     files,
     getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
   );
+  const ignore = parseIgnore();
 
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, pool, baseDir, getBool("strict"));
+    problems = runValidate(files, pool, baseDir, getBool("strict"), ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
     const generators = buildGenerators({
@@ -252,7 +292,7 @@ function main() {
     const outDir = getInput("output")
       ? path.resolve(baseDir, getInput("output"))
       : "";
-    problems = runGenerate(files, pool, baseDir, gen, genName, outDir);
+    problems = runGenerate(files, pool, baseDir, gen, genName, outDir, ignore);
   } else {
     fail(`Unknown command '${command}'. Expected 'validate' or 'generate'.`);
     return;

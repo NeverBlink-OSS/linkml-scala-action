@@ -37,6 +37,10 @@ inputs:
     description: "Optional directory of extra .yaml schemas to make available to `imports:` (keyed by filename)."
     required: false
     default: ""
+  ignore:
+    description: "Newline-separated list of substrings; any validation problem whose message contains one is silenced (not annotated, not counted, no effect on the exit code). Still logged for auditability. e.g. \"No 'tree_root' class\" or \"Unknown reference\"."
+    required: false
+    default: ""
   annotations:
     description: "Emit GitHub error/warning annotations for problems."
     required: false

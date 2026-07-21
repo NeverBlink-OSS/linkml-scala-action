@@ -158,6 +158,31 @@ run("cyclic imports (a <-> b) validate via loadFromPath", {
   files: "test/fixtures/cyclic/*.yaml",
 }, { code: 0, stdoutIncludes: ["a.yaml", "b.yaml"] });
 
+run("ignore silences a matching warning (no annotation, logged)", {
+  command: "validate",
+  files: "examples/warning.yaml",
+  ignore: "No 'tree_root' class",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::warning"] });
+
+run("ignored warning does not fail even under --strict", {
+  command: "validate",
+  files: "examples/warning.yaml",
+  strict: "true",
+  ignore: "tree_root",
+}, { code: 0, stdoutExcludes: ["::warning", "::error"] });
+
+run("ignore silences a fatal error kind", {
+  command: "validate",
+  files: "examples/broken.yaml",
+  ignore: "Unknown reference",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
+
+run("non-matching ignore leaves the error in place", {
+  command: "validate",
+  files: "examples/broken.yaml",
+  ignore: "some other message",
+}, { code: 1, stdoutIncludes: ["::error", "NonExistentClass"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);

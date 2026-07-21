@@ -60,6 +60,7 @@ Fail the build on warnings too:
 | `open`              | `false`    | **generate json-schema/shacl:** allow additional properties (open shapes). |
 | `package`           | `linkml`   | **generate scala:** target package name. |
 | `imports`           | –          | Directory of extra `.yaml` schemas made available to `imports:` (keyed by path, relative to `working-directory`). |
+| `ignore`            | –          | Newline-separated substrings of problems to silence. |
 | `annotations`       | `true`     | Emit GitHub error/warning annotations. |
 | `working-directory` | `.`        | Base directory for resolving `files`, `imports`, and `output`. |
 
