@@ -1,8 +1,14 @@
 name: track-linkml-scala
 
-# Periodically checks for a new @neverblink/linkml (linkml-scala) release, and if
-# found: bumps the bundled engine, rebuilds dist/, re-runs the test suite against
-# the new engine, and cuts a matching release.
+# Periodically checks for a new @neverblink/linkml (linkml-scala) release and
+# ensures a matching action release exists. A release is cut whenever the
+# `vX.Y.Z` tag is missing for the target version — regardless of whether this
+# workflow bumps the engine itself or a human already merged the bump (in which
+# case it just re-tests the current tree and tags it). The trigger to release is
+# "the tag doesn't exist yet", not "the version changed".
+#
+# When a bump is needed it also rebuilds dist/ and re-runs the suite against the
+# new engine; a failure blocks the release so a human can investigate.
 #
 # Versioning (per README):
 #   - the action version tracks the engine version  -> exact tag  vX.Y.Z
@@ -72,50 +78,66 @@ jobs:
         env:
           TARGET: ${{ steps.versions.outputs.target }}
           CURRENT: ${{ steps.versions.outputs.current }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          update=true
-          if [ "$TARGET" = "$CURRENT" ]; then
-            echo "Already bundling $TARGET; nothing to do."
-            update=false
-          elif git rev-parse -q --verify "refs/tags/v$TARGET" >/dev/null; then
-            echo "Tag v$TARGET already exists; nothing to do."
-            update=false
+          # Release whenever the exact tag is missing; bump the source only when
+          # the tree isn't already on the target (e.g. a human already merged it).
+          release=true
+          bump=true
+          if [ "$TARGET" = "$CURRENT" ]; then bump=false; fi
+
+          if gh release view "v$TARGET" >/dev/null 2>&1; then
+            echo "Release v$TARGET already exists; nothing to do."
+            release=false
           elif ! npm view "@neverblink/linkml@$TARGET" version >/dev/null 2>&1; then
             echo "::error::@neverblink/linkml@$TARGET is not published on npm."
             exit 1
+          else
+            echo "Will release v$TARGET (bump source: $bump)."
           fi
-          echo "update=$update" >> "$GITHUB_OUTPUT"
+          {
+            echo "release=$release"
+            echo "bump=$bump"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Bump engine, rebuild, and test
-        if: steps.check.outputs.update == 'true'
+      - name: Prepare and test
+        if: steps.check.outputs.release == 'true'
+        env:
+          TARGET: ${{ steps.versions.outputs.target }}
+          BUMP: ${{ steps.check.outputs.bump }}
+        run: |
+          set -euo pipefail
+          npm ci
+          if [ "$BUMP" = "true" ]; then
+            npm install "@neverblink/linkml@$TARGET" --save-exact
+            npm version "$TARGET" --no-git-tag-version --allow-same-version
+            sed -i -E "s/const LINKML_VERSION = \"[^\"]*\";/const LINKML_VERSION = \"$TARGET\";/" src/index.js
+            npm run build
+          fi
+          # Gate the release on the suite. When bumping, this exercises the
+          # freshly rebuilt bundle; otherwise it exercises the committed one.
+          npm test
+
+      - name: Commit bump
+        if: steps.check.outputs.release == 'true' && steps.check.outputs.bump == 'true' && inputs.dry_run != true
         env:
           TARGET: ${{ steps.versions.outputs.target }}
         run: |
           set -euo pipefail
-          npm ci
-          npm install "@neverblink/linkml@$TARGET" --save-exact
-          npm version "$TARGET" --no-git-tag-version --allow-same-version
-          sed -i -E "s/const LINKML_VERSION = \"[^\"]*\";/const LINKML_VERSION = \"$TARGET\";/" src/index.js
-          npm run build
-          # Verify the action still behaves correctly against the new engine.
-          # A failure here blocks the release so a human can investigate.
-          npm test
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: track linkml-scala $TARGET"
+          git push origin "HEAD:$GITHUB_REF_NAME"
 
-      - name: Commit, tag, and release
-        if: steps.check.outputs.update == 'true' && inputs.dry_run != true
+      - name: Tag and release
+        if: steps.check.outputs.release == 'true' && inputs.dry_run != true
         env:
           TARGET: ${{ steps.versions.outputs.target }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add -A
-          git commit -m "chore: track linkml-scala $TARGET"
-          git push origin "HEAD:$GITHUB_REF_NAME"
-
           sha="$(git rev-parse HEAD)"
 
           cat > release-notes.md <<EOF
@@ -135,11 +157,12 @@ jobs:
           git tag -f v1 "$sha"
           git push -f origin v1
 
-          echo "Released v$TARGET and moved v1." >> "$GITHUB_STEP_SUMMARY"
+          echo "Released v$TARGET at $sha and moved v1." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run summary
-        if: steps.check.outputs.update == 'true' && inputs.dry_run == true
+        if: steps.check.outputs.release == 'true' && inputs.dry_run == true
         env:
           TARGET: ${{ steps.versions.outputs.target }}
+          BUMP: ${{ steps.check.outputs.bump }}
         run: |
-          echo "DRY RUN: would release v$TARGET and move v1 (build + tests passed)." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "DRY RUN: would release v$TARGET (bump source: $BUMP) and move v1 (build + tests passed)." | tee -a "$GITHUB_STEP_SUMMARY"
