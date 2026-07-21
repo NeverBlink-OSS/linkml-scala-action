@@ -153,6 +153,11 @@ run("imports directory resolves cross-file references", {
   output: path.relative(ROOT, outDir),
 }, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "main.schema.json")] });
 
+run("cyclic imports (a <-> b) validate via loadFromPath", {
+  command: "validate",
+  files: "test/fixtures/cyclic/*.yaml",
+}, { code: 0, stdoutIncludes: ["a.yaml", "b.yaml"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);

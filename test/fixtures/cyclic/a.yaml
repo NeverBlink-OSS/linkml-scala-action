@@ -1,0 +1,14 @@
+id: https://example.org/a
+name: a
+# a imports b, and b imports a back — a cycle involving the root schema.
+# loadFromPath resolves this without re-loading the root; loadFromString would not.
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+  - b
+classes:
+  AClass:
+    attributes:
+      to_b:
+        range: BClass

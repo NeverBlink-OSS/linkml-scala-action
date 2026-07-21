@@ -4,7 +4,7 @@ prefixes:
   linkml: https://w3id.org/linkml/
 imports:
   - linkml:types
-  - shared          # resolved from the `imports` directory (shared.yaml)
+  - common/shared   # relative path, resolved against this file's directory
 tree_root: Employee
 classes:
   Employee:
