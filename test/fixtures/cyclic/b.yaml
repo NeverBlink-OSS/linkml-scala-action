@@ -1,0 +1,12 @@
+id: https://example.org/b
+name: b
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+  - a
+classes:
+  BClass:
+    attributes:
+      to_a:
+        range: AClass

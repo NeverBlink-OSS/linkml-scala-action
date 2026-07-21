@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.9.3";
+const LINKML_VERSION = "0.10.0";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -40,55 +40,74 @@ function fail(message) {
 }
 
 // ---------------------------------------------------------------------------
-// Generator registry: how each generator is invoked and where its output goes.
-// `single` returns a string; `multi` returns a { filename: contents } map.
+// Generator registry: how each generator turns a loaded SchemaView into output,
+// and where that output goes. `multi` returns a { filename: contents } map.
 // ---------------------------------------------------------------------------
 function buildGenerators({ open, packageName }) {
   return {
     "json-schema": {
       ext: ".schema.json",
-      run: (s, m) => LinkML.jsonSchema(s, m, open),
+      run: (v) => LinkML.jsonSchema(v, open),
     },
     shacl: {
       ext: ".shacl.nt",
-      run: (s, m) => LinkML.shacl(s, m, open),
+      run: (v) => LinkML.shacl(v, open),
     },
     rdfs: {
       ext: ".rdfs.nt",
-      run: (s, m) => LinkML.rdfs(s, m, false),
+      run: (v) => LinkML.rdfs(v, false),
     },
     linkml: {
       ext: ".materialized.yaml",
-      run: (s, m) => LinkML.linkml(s, m),
+      run: (v) => LinkML.linkml(v),
     },
     "table-schema": {
       ext: ".table.json",
-      run: (s, m) => LinkML.tableSchema(s, m),
+      run: (v) => LinkML.tableSchema(v),
     },
     scala: {
       multi: true,
-      run: (s, m) => LinkML.scala(s, m, packageName),
+      run: (v) => LinkML.scala(v, packageName),
     },
   };
 }
 
-// ---------------------------------------------------------------------------
-// Load the import map: every *.yaml/*.yml under `imports`, keyed by basename.
-// linkml resolves `imports: [shared]` to the map key `shared.yaml`.
-// ---------------------------------------------------------------------------
-function loadImportMap(importsDir) {
-  const map = {};
-  if (!importsDir) return map;
-  if (!fs.existsSync(importsDir)) {
-    fail(`imports directory not found: ${importsDir}`);
-    return map;
+// Import-map key for a file: its path relative to the base directory, in POSIX
+// form. linkml-scala resolves `imports:` entries as paths relative to the
+// importing schema's directory, so keys must be paths-as-seen-from-the-root.
+const keyFor = (baseDir, file) =>
+  path.relative(baseDir, file).split(path.sep).join("/");
+
+// Recursively collect *.yaml/*.yml files under a directory (absolute paths).
+function collectYaml(dir) {
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...collectYaml(abs));
+    else if (e.isFile() && /\.ya?ml$/i.test(e.name)) out.push(abs);
   }
-  for (const name of fs.readdirSync(importsDir)) {
-    if (/\.ya?ml$/i.test(name)) {
-      map[name] = fs.readFileSync(path.join(importsDir, name), "utf8");
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Build the import map (pool): every input schema plus every schema under the
+// `imports` directory, keyed by path relative to `baseDir`. Each root schema is
+// then loaded via loadFromPath(key, pool), which resolves imports through this
+// map and stays correct even when the root takes part in an import cycle.
+// ---------------------------------------------------------------------------
+function buildImportMap(baseDir, files, importsDir) {
+  const pool = {};
+  for (const f of files) pool[keyFor(baseDir, f)] = fs.readFileSync(f, "utf8");
+  if (importsDir) {
+    if (!fs.existsSync(importsDir)) {
+      fail(`imports directory not found: ${importsDir}`);
+    } else {
+      for (const f of collectYaml(importsDir)) {
+        pool[keyFor(baseDir, f)] = fs.readFileSync(f, "utf8");
+      }
     }
   }
-  return map;
+  return pool;
 }
 
 // Extract the human-readable message from a thrown Scala.js error.
@@ -99,15 +118,17 @@ const errMessage = (e) =>
   );
 
 // ---------------------------------------------------------------------------
-function runValidate(files, importMap, strict) {
+function runValidate(files, pool, baseDir, strict) {
   let problems = 0;
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
     let report;
     try {
-      report = LinkML.lint(fs.readFileSync(file, "utf8"), importMap);
+      // Fatal problems are thrown while resolving the schema; warnings come
+      // back as a string from lint().
+      const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
+      report = LinkML.lint(view);
     } catch (e) {
-      // Fatal problems are thrown rather than returned.
       problems++;
       for (const line of errMessage(e).split("\n")) {
         if (line.trim()) annotate("error", line.trim(), rel);
@@ -145,14 +166,15 @@ function writeSingle(outDir, file, contents, ext) {
   info(`  → ${path.relative(process.cwd(), dest)}`);
 }
 
-function runGenerate(files, importMap, gen, genName, outDir) {
+function runGenerate(files, pool, baseDir, gen, genName, outDir) {
   let problems = 0;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
     let result;
     try {
-      result = gen.run(fs.readFileSync(file, "utf8"), importMap);
+      const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
+      result = gen.run(view);
     } catch (e) {
       problems++;
       annotate("error", errMessage(e), rel);
@@ -203,13 +225,15 @@ function main() {
     return;
   }
 
-  const importMap = loadImportMap(
+  const pool = buildImportMap(
+    baseDir,
+    files,
     getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
   );
 
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, importMap, getBool("strict"));
+    problems = runValidate(files, pool, baseDir, getBool("strict"));
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
     const generators = buildGenerators({
@@ -228,7 +252,7 @@ function main() {
     const outDir = getInput("output")
       ? path.resolve(baseDir, getInput("output"))
       : "";
-    problems = runGenerate(files, importMap, gen, genName, outDir);
+    problems = runGenerate(files, pool, baseDir, gen, genName, outDir);
   } else {
     fail(`Unknown command '${command}'. Expected 'validate' or 'generate'.`);
     return;

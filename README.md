@@ -59,7 +59,7 @@ Fail the build on warnings too:
 | `output`            | –          | **generate:** output directory (one file per input schema). If omitted, output is printed to the job log. |
 | `open`              | `false`    | **generate json-schema/shacl:** allow additional properties (open shapes). |
 | `package`           | `linkml`   | **generate scala:** target package name. |
-| `imports`           | –          | Directory of extra `.yaml` schemas made available to `imports:` (keyed by filename). |
+| `imports`           | –          | Directory of extra `.yaml` schemas made available to `imports:` (keyed by path, relative to `working-directory`). |
 | `annotations`       | `true`     | Emit GitHub error/warning annotations. |
 | `working-directory` | `.`        | Base directory for resolving `files`, `imports`, and `output`. |
 
@@ -84,8 +84,8 @@ Fail the build on warnings too:
         with:
           command: generate
           generator: shacl
-          files: "schemas/main.yaml"
-          imports: "schemas/common"   # dir containing e.g. types.yaml, core.yaml
+          files: "schemas/main.yaml"        # e.g. imports: [common/types]
+          imports: "schemas"                # dir holding schemas/common/types.yaml
           output: build/shacl
 ```
 
