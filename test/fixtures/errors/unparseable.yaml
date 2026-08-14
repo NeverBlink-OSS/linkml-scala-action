@@ -1,0 +1,6 @@
+# Deliberately invalid YAML: the flow sequence on the next line is never closed.
+# linkml-scala reports this as a FATAL issue carrying a `code_region`, which is
+# what lets the action point an annotation at a line and column.
+id: https://example.org/unparseable
+classes: [unclosed
+  Thing: {}

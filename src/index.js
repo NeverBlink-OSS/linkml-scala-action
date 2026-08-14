@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.11.2";
+const LINKML_VERSION = "0.12.2";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -28,10 +28,15 @@ const escProp = (s) =>
   escData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
 
 let annotationsOn = true;
-function annotate(level, message, file) {
+// `props` holds the optional annotation properties (file, line, col, …).
+// Entries without a value are dropped, so we never emit `line=undefined`.
+function annotate(level, message, props = {}) {
   if (!annotationsOn) return;
-  const loc = file ? ` file=${escProp(file)}` : "";
-  process.stdout.write(`::${level}${loc}::${escData(message)}\n`);
+  const s = Object.entries(props)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => `${k}=${escProp(v)}`)
+    .join(",");
+  process.stdout.write(`::${level}${s ? " " + s : ""}::${escData(message)}\n`);
 }
 const info = (m) => process.stdout.write(m + "\n");
 function fail(message) {
@@ -64,6 +69,10 @@ function buildGenerators({ open, packageName }) {
     "table-schema": {
       ext: ".table.json",
       run: (v) => LinkML.tableSchema(v),
+    },
+    graphql: {
+      ext: ".graphql",
+      run: (v) => LinkML.graphQl(v),
     },
     scala: {
       multi: true,
@@ -117,6 +126,46 @@ const errMessage = (e) =>
     ""
   );
 
+// ---------------------------------------------------------------------------
+// Problems are structured `SchemaIssue` objects (see linkml-scala's
+// model/validation-report.yaml), each with a severity of:
+//   FATAL   – the schema could not be loaded, so nothing can be generated
+//   ERROR   – the schema loaded but is invalid (e.g. non-unique names)
+//   WARNING – advisory (e.g. no `tree_root` class)
+// FATAL/ERROR fail the run; WARNING only does so under `strict`.
+// ---------------------------------------------------------------------------
+const isWarning = (issue) =>
+  String(issue.severity ?? "").toUpperCase() === "WARNING";
+
+// Human-readable text for an issue: `details` when the engine inferred it (the
+// longer form, which normally embeds the short message), else `message`. Both
+// are filled in because linkml-scala's `inferMessages` defaults to true; the
+// fallback only matters for an issue type that ships without either.
+function issueText(issue) {
+  const body = issue.details || issue.message;
+  const pointer = issue.location?.json_pointer;
+  if (!body) {
+    return `${issue.severity ?? "ERROR"} problem${pointer ? ` at ${pointer}` : ""}`;
+  }
+  // The inferred text usually already ends with "at <pointer>"; only append the
+  // pointer when it doesn't, so it isn't printed twice.
+  return pointer && !body.includes(pointer) ? `${body} at ${pointer}` : body;
+}
+
+// GitHub annotation position for an issue, when the engine pinned down a code
+// region (it does for parse errors; reference errors carry only a JSON
+// pointer). linkml-scala's `end_column` is exclusive, GitHub's is inclusive.
+function position(issue) {
+  const r = issue.location?.code_region;
+  if (!r?.start_line) return {};
+  const pos = { line: r.start_line, col: r.start_column };
+  if (r.end_line || r.end_column) {
+    pos.endLine = r.end_line ?? r.start_line;
+    if (r.end_column > 1) pos.endColumn = r.end_column - 1;
+  }
+  return pos;
+}
+
 // Parse the `ignore` input into lower-cased substrings, one per line. A problem
 // whose message contains any of these is silenced (not annotated, not counted,
 // no effect on the exit code) — but still logged, so it stays auditable.
@@ -127,21 +176,54 @@ function parseIgnore() {
     .filter(Boolean);
 }
 
-const isIgnored = (line, ignore) =>
-  ignore.some((p) => line.toLowerCase().includes(p));
+// Match against both message and details, so a pattern written against the
+// short message still silences the issue when the long form is what's shown.
+const isIgnored = (issue, ignore) => {
+  const hay = `${issue.message ?? ""}\n${issue.details ?? ""}`.toLowerCase();
+  return ignore.some((p) => hay.includes(p));
+};
 
-// Problem message lines from a lint report or a thrown error, minus the
-// summary/header line.
-function problemLines(text) {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(
-      (l) =>
-        l &&
-        !/^Found \d+ problem/i.test(l) &&
-        !/^Fatal validation problems/i.test(l)
-    );
+// ---------------------------------------------------------------------------
+// Load a schema. Loading is validating: linkml-scala lints on the way through,
+// so the report covers warnings and errors and not just the fatals that blocked
+// loading, and `view` is absent exactly when a fatal problem stopped the load.
+// Schema problems (including unparseable YAML and unresolvable imports) come
+// back in the report rather than as exceptions, so a throw here is unexpected —
+// surface it as a synthetic fatal issue, which keeps it annotated, counted and
+// silenceable like any other problem.
+// ---------------------------------------------------------------------------
+function loadSchema(file, pool, baseDir) {
+  try {
+    const { view, report } = LinkML.loadFromPath(keyFor(baseDir, file), pool);
+    return { view, issues: report?.issues ?? [] };
+  } catch (e) {
+    return {
+      view: undefined,
+      issues: [{ severity: "FATAL", message: errMessage(e) }],
+    };
+  }
+}
+
+// Annotate every issue not silenced by `ignore`. Returns how many were kept and
+// whether they should fail the run.
+function reportIssues(issues, rel, strict, ignore) {
+  let kept = 0;
+  let failed = false;
+  for (const issue of issues) {
+    const text = issueText(issue);
+    if (isIgnored(issue, ignore)) {
+      info(`  (ignored) ${text}`);
+      continue;
+    }
+    kept++;
+    const warning = isWarning(issue);
+    annotate(warning ? "warning" : "error", text, {
+      file: rel,
+      ...position(issue),
+    });
+    if (!warning || strict) failed = true;
+  }
+  return { kept, failed };
 }
 
 // ---------------------------------------------------------------------------
@@ -149,39 +231,15 @@ function runValidate(files, pool, baseDir, strict, ignore) {
   let problems = 0;
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
-    let lines;
-    let fatal = false;
-    try {
-      // Fatal problems are thrown while resolving the schema; warnings come
-      // back as a string from lint().
-      const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
-      const report = LinkML.lint(view);
-      lines = report ? problemLines(report) : [];
-    } catch (e) {
-      fatal = true;
-      lines = problemLines(errMessage(e));
-    }
+    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { kept, failed } = reportIssues(issues, rel, strict, ignore);
 
-    let kept = 0;
-    for (const line of lines) {
-      if (isIgnored(line, ignore)) {
-        info(`  (ignored) ${line}`);
-        continue;
-      }
-      kept++;
-      problems++;
-      if (!fatal && /^warning/i.test(line)) {
-        annotate("warning", line, rel);
-        if (strict) process.exitCode = 1;
-      } else {
-        annotate("error", line, rel);
-        process.exitCode = 1;
-      }
-    }
+    problems += kept;
+    if (failed) process.exitCode = 1;
 
-    if (fatal && kept > 0) fail(`${rel}: fatal validation problems`);
+    if (!view && kept > 0) fail(`${rel}: fatal validation problems`);
     else if (kept === 0) info(`✓ ${rel}`);
-    else info(`${strict ? "✗" : "•"} ${rel}`);
+    else info(`${failed ? "✗" : "•"} ${rel}`);
   }
   return problems;
 }
@@ -194,33 +252,49 @@ function writeSingle(outDir, file, contents, ext) {
   info(`  → ${path.relative(process.cwd(), dest)}`);
 }
 
-function runGenerate(files, pool, baseDir, gen, genName, outDir, ignore) {
+function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
   let problems = 0;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
-    let result;
-    try {
-      const view = LinkML.loadFromPath(keyFor(baseDir, file), pool);
-      result = gen.run(view);
-    } catch (e) {
-      const kept = [];
-      for (const line of problemLines(errMessage(e))) {
-        if (isIgnored(line, ignore)) info(`  (ignored) ${line}`);
-        else kept.push(line);
-      }
-      if (kept.length === 0) {
+    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { kept, failed } = reportIssues(issues, rel, strict, ignore);
+
+    problems += kept;
+    if (failed) process.exitCode = 1;
+
+    // Without a view a fatal problem stopped the load, so there is nothing to
+    // generate from. Non-fatal problems don't block generation: the output is
+    // still written (and still fails the run, unless it was only a warning) so
+    // it's there to inspect.
+    if (!view) {
+      if (kept === 0) {
         // Every problem was silenced — nothing to fail on, but note that no
         // output was produced for this schema.
+        info(`✓ ${rel} (problems ignored; no output generated)`);
+      } else {
+        fail(`${rel}: ${genName} generation failed`);
+      }
+      continue;
+    }
+
+    let result;
+    try {
+      result = gen.run(view);
+    } catch (e) {
+      const issue = { severity: "FATAL", message: errMessage(e) };
+      if (isIgnored(issue, ignore)) {
+        info(`  (ignored) ${issue.message}`);
         info(`✓ ${rel} (problems ignored; no output generated)`);
         continue;
       }
       problems++;
-      for (const line of kept) annotate("error", line, rel);
+      annotate("error", issueText(issue), { file: rel });
       fail(`${rel}: ${genName} generation failed`);
       continue;
     }
-    info(`✓ ${rel}`);
+
+    info(`${failed ? "✗" : "✓"} ${rel}`);
     if (gen.multi) {
       // { filename: contents } – write under <outDir>/<schema>/<filename>.
       const base = path.basename(file).replace(/\.ya?ml$/i, "");
@@ -270,10 +344,11 @@ function main() {
     getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
   );
   const ignore = parseIgnore();
+  const strict = getBool("strict");
 
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, pool, baseDir, getBool("strict"), ignore);
+    problems = runValidate(files, pool, baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
     const generators = buildGenerators({
@@ -292,7 +367,16 @@ function main() {
     const outDir = getInput("output")
       ? path.resolve(baseDir, getInput("output"))
       : "";
-    problems = runGenerate(files, pool, baseDir, gen, genName, outDir, ignore);
+    problems = runGenerate(
+      files,
+      pool,
+      baseDir,
+      gen,
+      genName,
+      outDir,
+      strict,
+      ignore
+    );
   } else {
     fail(`Unknown command '${command}'. Expected 'validate' or 'generate'.`);
     return;

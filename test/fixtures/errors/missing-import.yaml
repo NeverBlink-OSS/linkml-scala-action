@@ -1,0 +1,17 @@
+# Imports a schema that is not in the import map. Since linkml-scala 0.12 this
+# is a FATAL issue in the report rather than a thrown exception, and the reason
+# ("Could not read from import map") only appears in the issue's `details`.
+id: https://example.org/missing-import
+name: missing-import
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_range: string
+imports:
+  - linkml:types
+  - ./nowhere
+classes:
+  Thing:
+    tree_root: true
+    attributes:
+      x:
+        range: string

@@ -4,7 +4,7 @@ A GitHub Action to **validate** and **generate from** [LinkML](https://linkml.io
 
 - 🚀 **Pure Node.js** – no Docker, no JVM, no Python, no binary download. Uses the [`@neverblink/linkml`](https://www.npmjs.com/package/@neverblink/linkml) npm package.
 - 🖥️ **Runs everywhere** – Linux, macOS, and Windows runners.
-- 🏷️ **Inline annotations** – schema problems posted as GitHub annotations (on the PR "Files changed" tab and the check summary).
+- 🏷️ **Inline annotations** – schema problems posted as GitHub annotations (on the PR "Files changed" tab and the check summary), pinned to a line and column when the engine reports one.
 - ⚡ **Fast** – validating a schema is a few milliseconds after Node starts up.
 
 ## Quick start
@@ -54,8 +54,8 @@ Fail the build on warnings too:
 |---------------------|------------|-------------|
 | `command`           | `validate` | `validate` or `generate`. |
 | `files`             | *required* | Schema files. Space/newline-separated; globs incl. `**` supported. |
-| `strict`            | `false`    | **validate:** treat warnings as failures. |
-| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `linkml`, `table-schema`, or `scala`. |
+| `strict`            | `false`    | Treat warnings as failures. Errors always fail; warnings only with this on. |
+| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `linkml`, `table-schema`, `graphql`, or `scala`. |
 | `output`            | –          | **generate:** output directory (one file per input schema). If omitted, output is printed to the job log. |
 | `open`              | `false`    | **generate json-schema/shacl:** allow additional properties (open shapes). |
 | `package`           | `linkml`   | **generate scala:** target package name. |
@@ -74,9 +74,17 @@ Fail the build on warnings too:
 
 ## Behavior
 
-- **Validation** uses the linkml-scala linter. **Fatal** problems (e.g. an unknown class reference) fail the step. **Warnings** are reported but only fail the step when `strict: true`.
+Loading a schema validates it, so both commands report the same problems. Each has a severity:
+
+| Severity  | Meaning | Effect |
+|-----------|---------|--------|
+| `FATAL`   | The schema could not be loaded at all (unparseable YAML, an unresolvable import, an unknown class reference). | Fails the step. Nothing is generated from the schema. |
+| `ERROR`   | The schema loaded but is invalid (e.g. two `tree_root` classes, a non-unique name). | Fails the step. Generation still runs, so the output is there to inspect. |
+| `WARNING` | Advisory (e.g. no `tree_root` class). | Reported only; fails the step when `strict: true`. |
+
 - **Generators** write one output file per input schema into `output`, named after the schema (`person.yaml` → `person.schema.json`). The `scala` generator can emit multiple files per schema, so those go under `output/<schema-name>/`.
 - **Imports:** if your schemas use `imports: [shared]`, point `imports` at a directory containing `shared.yaml`. Files are keyed by filename.
+- **`ignore`** silences a problem of any severity whose message contains one of the given substrings. Silenced problems are still logged (prefixed `(ignored)`) but are not annotated, not counted in `problems`, and do not affect the exit code.
 
 ## Resolving imports – example
 

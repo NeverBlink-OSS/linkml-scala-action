@@ -14,11 +14,11 @@ inputs:
     description: "Schema files to process. Space- or newline-separated; globs (including **) are supported."
     required: true
   strict:
-    description: "validate only: treat warnings as failures."
+    description: "Treat warnings as failures. Errors always fail, warnings only with this on."
     required: false
     default: "false"
   generator:
-    description: "generate only: json-schema | shacl | rdfs | linkml | table-schema | scala."
+    description: "generate only: json-schema | shacl | rdfs | linkml | table-schema | graphql | scala."
     required: false
     default: ""
   output:

@@ -1,0 +1,21 @@
+# Two `tree_root` classes: an ERROR-severity problem. The schema still loads
+# (unlike a FATAL one), so this covers the "invalid but usable view" path —
+# generation succeeds while the run still fails.
+id: https://example.org/multiple-tree-roots
+name: multiple-tree-roots
+prefixes:
+  linkml: https://w3id.org/linkml/
+default_range: string
+imports:
+  - linkml:types
+classes:
+  Alpha:
+    tree_root: true
+    attributes:
+      a:
+        range: string
+  Beta:
+    tree_root: true
+    attributes:
+      b:
+        range: string
