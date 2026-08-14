@@ -183,6 +183,67 @@ run("non-matching ignore leaves the error in place", {
   ignore: "some other message",
 }, { code: 1, stdoutIncludes: ["::error", "NonExistentClass"] });
 
+run("generate graphql writes a .graphql file", {
+  command: "generate",
+  generator: "graphql",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.graphql")] });
+
+// --- structured reports (linkml-scala >= 0.12) --------------------------------
+
+// ERROR sits between WARNING and FATAL: the schema is invalid, but it still
+// loads. It must fail the run without --strict, unlike a warning.
+run("an ERROR-severity problem fails validation without --strict", {
+  command: "validate",
+  files: "test/fixtures/errors/multiple-tree-roots.yaml",
+}, { code: 1, stdoutIncludes: ["::error", "tree_root", "Alpha, Beta"] });
+
+// ...and because the view still loads, generation runs and writes output while
+// the run as a whole fails.
+run("an ERROR-severity problem still generates output, but fails", {
+  command: "generate",
+  generator: "json-schema",
+  files: "test/fixtures/errors/multiple-tree-roots.yaml",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 1,
+  stdoutIncludes: ["::error", "Alpha, Beta"],
+  filesExist: [path.join(path.relative(ROOT, outDir), "multiple-tree-roots.schema.json")],
+});
+
+run("an ERROR-severity problem can be silenced with ignore", {
+  command: "validate",
+  files: "test/fixtures/errors/multiple-tree-roots.yaml",
+  ignore: "Multiple classes are defined as a 'tree_root'",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
+
+// A code_region in the report becomes a line/column on the annotation.
+run("a parse error is annotated with a line and column", {
+  command: "validate",
+  files: "test/fixtures/errors/unparseable.yaml",
+}, {
+  code: 1,
+  stdoutIncludes: ["::error", "line=", "col=", "Cannot parse schema"],
+});
+
+// An unresolvable import is a FATAL issue, not a thrown error; its reason lives
+// in the issue's `details`, which is what the action reports.
+run("an unresolvable import is reported as a fatal problem", {
+  command: "validate",
+  files: "test/fixtures/errors/missing-import.yaml",
+}, {
+  code: 1,
+  stdoutIncludes: ["::error", "Cannot import schema", "Could not read from import map"],
+});
+
+run("generate on an unresolvable import fails without output", {
+  command: "generate",
+  generator: "json-schema",
+  files: "test/fixtures/errors/missing-import.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 1, stdoutIncludes: ["::error", "generation failed"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);
