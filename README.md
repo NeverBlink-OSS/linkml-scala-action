@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: NeverBlink-OSS/linkml-scala-action@v1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
         with:
           files: "schemas/**/*.yaml"
 ```
@@ -27,7 +27,7 @@ jobs:
 Generate JSON Schema and commit/upload it as an artifact:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
         with:
           command: generate
           generator: json-schema
@@ -42,7 +42,7 @@ Generate JSON Schema and commit/upload it as an artifact:
 Fail the build on warnings too:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
         with:
           files: "schemas/**/*.yaml"
           strict: true
@@ -89,7 +89,7 @@ Loading a schema validates it, so both commands report the same problems. Each h
 ## Resolving imports – example
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
         with:
           command: generate
           generator: shacl
@@ -100,12 +100,13 @@ Loading a schema validates it, so both commands report the same problems. Each h
 
 ## Versioning
 
-The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version:
+The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version. Pin an exact tag:
 
-- Pin an **exact tag** (e.g. `@v0.9.2`) for reproducibility.
-- Pin the **moving major tag** `@v1` for automatic patch/minor updates.
+```yaml
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+```
 
-New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, and – only if that passes – cuts the matching `vX.Y.Z` release and advances `vX`. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).
+New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, updates the examples above, and – only if that passes – cuts the matching `vX.Y.Z` release. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).
 
 ## Development
 

@@ -10,11 +10,10 @@ name: track-linkml-scala
 # When a bump is needed it also rebuilds dist/ and re-runs the suite against the
 # new engine; a failure blocks the release so a human can investigate.
 #
-# Versioning (per README):
-#   - the action version tracks the engine version  -> exact tag  vX.Y.Z
-#   - a moving major tag gives automatic patch/minor -> moving tag v1
-#     (v1 is the action's own major line; bump it manually only on a breaking
-#     change to the action itself, not on engine releases.)
+# Versioning (per README): the action version tracks the engine version, and
+# every release is an immutable `vX.Y.Z` tag. There is no moving major tag.
+# The README's usage examples are re-pinned to the released version here, so
+# they never drift from what is actually published.
 #
 # npm (not the GitHub release) is the source of truth, since that is what the
 # action actually bundles – this avoids racing a release whose npm publish is
@@ -115,20 +114,33 @@ jobs:
             sed -i -E "s/const LINKML_VERSION = \"[^\"]*\";/const LINKML_VERSION = \"$TARGET\";/" src/index.js
             npm run build
           fi
+          # Re-pin the README examples even when the tree was bumped by a human.
+          sed -i -E "s|linkml-scala-action@v[0-9]+\.[0-9]+\.[0-9]+|linkml-scala-action@v$TARGET|g" README.md
           # Gate the release on the suite. When bumping, this exercises the
           # freshly rebuilt bundle; otherwise it exercises the committed one.
           npm test
 
       - name: Commit bump
-        if: steps.check.outputs.release == 'true' && steps.check.outputs.bump == 'true' && inputs.dry_run != true
+        if: steps.check.outputs.release == 'true' && inputs.dry_run != true
         env:
           TARGET: ${{ steps.versions.outputs.target }}
+          BUMP: ${{ steps.check.outputs.bump }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: track linkml-scala $TARGET"
+          # Nothing to do when a human already merged the bump and the README
+          # examples were re-pinned in that same commit.
+          if git diff --cached --quiet; then
+            echo "Tree already matches v$TARGET; nothing to commit."
+            exit 0
+          fi
+          if [ "$BUMP" = "true" ]; then
+            git commit -m "chore: track linkml-scala $TARGET"
+          else
+            git commit -m "docs: pin examples to v$TARGET"
+          fi
           git push origin "HEAD:$GITHUB_REF_NAME"
 
       - name: Tag and release
@@ -145,19 +157,14 @@ jobs:
 
           Bundles \`@neverblink/linkml@$TARGET\`.
 
-          - Pin \`uses: NeverBlink-OSS/linkml-scala-action@v$TARGET\` for reproducibility.
-          - Pin \`@v1\` for automatic patch/minor updates.
+          Pin \`uses: NeverBlink-OSS/linkml-scala-action@v$TARGET\` – release tags are immutable.
           EOF
 
           # Exact, immutable release tag (gh creates the tag at $sha).
           gh release create "v$TARGET" --title "v$TARGET" --notes-file release-notes.md --target "$sha"
           rm -f release-notes.md
 
-          # Moving major tag (the action's own major line).
-          git tag -f v1 "$sha"
-          git push -f origin v1
-
-          echo "Released v$TARGET at $sha and moved v1." >> "$GITHUB_STEP_SUMMARY"
+          echo "Released v$TARGET at $sha." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run summary
         if: steps.check.outputs.release == 'true' && inputs.dry_run == true
@@ -165,4 +172,4 @@ jobs:
           TARGET: ${{ steps.versions.outputs.target }}
           BUMP: ${{ steps.check.outputs.bump }}
         run: |
-          echo "DRY RUN: would release v$TARGET (bump source: $BUMP) and move v1 (build + tests passed)." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "DRY RUN: would release v$TARGET (bump source: $BUMP) (build + tests passed)." | tee -a "$GITHUB_STEP_SUMMARY"
