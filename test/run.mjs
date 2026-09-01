@@ -90,11 +90,26 @@ run("generate json-schema to dir", {
   output: path.relative(ROOT, outDir),
 }, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.schema.json")] });
 
-run("generate shacl to log", {
+run("generate shacl to log defaults to Turtle", {
   command: "generate",
   generator: "shacl",
   files: "examples/person.yaml",
-}, { code: 0, stdoutIncludes: ["shacl"] });
+}, { code: 0, stdoutIncludes: ["shacl", "PREFIX sh:"] });
+
+run("format: nt switches shacl back to N-Triples (.shacl.nt)", {
+  command: "generate",
+  generator: "shacl",
+  format: "nt",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.shacl.nt")] });
+
+run("generate unknown format fails", {
+  command: "generate",
+  generator: "shacl",
+  format: "xml",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown format"] });
 
 run("generate unknown generator fails", {
   command: "generate",
@@ -113,12 +128,12 @@ run("annotations can be disabled", {
   annotations: "false",
 }, { code: 1, stdoutExcludes: ["::error"] });
 
-run("generate rdfs writes N-Triples (.rdfs.nt)", {
+run("generate rdfs writes Turtle (.rdfs.ttl)", {
   command: "generate",
   generator: "rdfs",
   files: "examples/person.yaml",
   output: path.relative(ROOT, outDir),
-}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.rdfs.nt")] });
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.rdfs.ttl")] });
 
 run("generate scala writes multiple files under <schema>/", {
   command: "generate",
@@ -127,6 +142,41 @@ run("generate scala writes multiple files under <schema>/", {
   files: "examples/person.yaml",
   output: path.relative(ROOT, outDir),
 }, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person", "Person.scala")] });
+
+run("generate frictionless writes a data package under <schema>/", {
+  command: "generate",
+  generator: "frictionless",
+  files: "examples/tables.yaml",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 0,
+  filesExist: [
+    path.join(path.relative(ROOT, outDir), "tables", "datapackage.json"),
+    path.join(path.relative(ROOT, outDir), "tables", "schemas", "person.json"),
+    path.join(path.relative(ROOT, outDir), "tables", "schemas", "address.json"),
+  ],
+});
+
+run("frictionless pruning-mode is accepted case-insensitively", {
+  command: "generate",
+  generator: "frictionless",
+  "pruning-mode": "treeroot",
+  files: "examples/tables.yaml",
+}, { code: 0, stdoutIncludes: ["datapackage.json"] });
+
+run("frictionless skip-classes-without-identifier drops the keyless table", {
+  command: "generate",
+  generator: "frictionless",
+  "skip-classes-without-identifier": "true",
+  files: "examples/tables.yaml",
+}, { code: 0, stdoutIncludes: ["schemas/person.json"], stdoutExcludes: ["schemas/address.json"] });
+
+run("generate unknown pruning-mode fails", {
+  command: "generate",
+  generator: "frictionless",
+  "pruning-mode": "everything",
+  files: "examples/tables.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown pruning-mode"] });
 
 run("generate on a fatally-broken schema fails", {
   command: "generate",
@@ -158,30 +208,65 @@ run("cyclic imports (a <-> b) validate via loadFromPath", {
   files: "test/fixtures/cyclic/*.yaml",
 }, { code: 0, stdoutIncludes: ["a.yaml", "b.yaml"] });
 
+// --- ignore: matches an issue's `issue_type` class name, exactly ------------
+
+run("reported problems carry their issue type", {
+  command: "validate",
+  files: "examples/broken.yaml",
+}, { code: 1, stdoutIncludes: ["::error", "[UnknownReference]"] });
+
 run("ignore silences a matching warning (no annotation, logged)", {
   command: "validate",
   files: "examples/warning.yaml",
-  ignore: "No 'tree_root' class",
+  ignore: "NoTreeRootClass",
 }, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::warning"] });
 
 run("ignored warning does not fail even under --strict", {
   command: "validate",
   files: "examples/warning.yaml",
   strict: "true",
-  ignore: "tree_root",
+  ignore: "NoTreeRootClass",
 }, { code: 0, stdoutExcludes: ["::warning", "::error"] });
 
-run("ignore silences a fatal error kind", {
+run("issue types are matched case-insensitively", {
+  command: "validate",
+  files: "examples/warning.yaml",
+  ignore: "notreerootclass",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::warning"] });
+
+run("ignore silences a fatal issue type", {
+  command: "validate",
+  files: "examples/broken.yaml",
+  ignore: "UnknownReference",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
+
+run("one entry per line silences several issue types", {
+  command: "validate",
+  files: "examples/**/*.yaml",
+  ignore: "UnknownReference\nNoTreeRootClass",
+}, { code: 0, stdoutExcludes: ["::error", "::warning"] });
+
+run("a non-matching issue type leaves the error in place", {
+  command: "validate",
+  files: "examples/broken.yaml",
+  ignore: "MultipleTreeRoots",
+}, { code: 1, stdoutIncludes: ["::error", "NonExistentClass"] });
+
+// Exact match only, so a type name that is a prefix of another does not
+// silence it.
+run("a prefix of an issue type does not match it", {
+  command: "validate",
+  files: "examples/broken.yaml",
+  ignore: "Unknown",
+}, { code: 1, stdoutIncludes: ["::error", "NonExistentClass"] });
+
+// The old behaviour was substring matching on the message; such an entry now
+// fails loudly rather than silencing nothing.
+run("message text in ignore is rejected", {
   command: "validate",
   files: "examples/broken.yaml",
   ignore: "Unknown reference",
-}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
-
-run("non-matching ignore leaves the error in place", {
-  command: "validate",
-  files: "examples/broken.yaml",
-  ignore: "some other message",
-}, { code: 1, stdoutIncludes: ["::error", "NonExistentClass"] });
+}, { code: 1, stdoutIncludes: ["Not an issue type", "'Unknown reference'"] });
 
 run("generate graphql writes a .graphql file", {
   command: "generate",
@@ -215,7 +300,7 @@ run("an ERROR-severity problem still generates output, but fails", {
 run("an ERROR-severity problem can be silenced with ignore", {
   command: "validate",
   files: "test/fixtures/errors/multiple-tree-roots.yaml",
-  ignore: "Multiple classes are defined as a 'tree_root'",
+  ignore: "MultipleTreeRoots",
 }, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
 
 // A code_region in the report becomes a line/column on the annotation.

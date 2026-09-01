@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.15.0
         with:
           files: "schemas/**/*.yaml"
 ```
@@ -27,7 +27,7 @@ jobs:
 Generate JSON Schema and commit/upload it as an artifact:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.15.0
         with:
           command: generate
           generator: json-schema
@@ -42,11 +42,13 @@ Generate JSON Schema and commit/upload it as an artifact:
 Fail the build on warnings too:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.15.0
         with:
           files: "schemas/**/*.yaml"
           strict: true
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed between releases.
 
 ## Inputs
 
@@ -55,12 +57,16 @@ Fail the build on warnings too:
 | `command`           | `validate` | `validate` or `generate`. |
 | `files`             | *required* | Schema files. Space/newline-separated; globs incl. `**` supported. |
 | `strict`            | `false`    | Treat warnings as failures. Errors always fail; warnings only with this on. |
-| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `linkml`, `table-schema`, `graphql`, or `scala`. |
+| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `linkml`, `frictionless`, `graphql`, or `scala`. |
 | `output`            | –          | **generate:** output directory (one file per input schema). If omitted, output is printed to the job log. |
 | `open`              | `false`    | **generate json-schema/shacl:** allow additional properties (open shapes). |
+| `format`            | `ttl`      | **generate shacl/rdfs:** RDF serialization – `ttl` (Turtle, prefixed and pretty-printed) or `nt` (N-Triples). |
 | `package`           | `linkml`   | **generate scala:** target package name. |
+| `pruning-mode`      | `skip`     | **generate frictionless:** which classes become tables – `treeRoot` (only those reachable from the `tree_root` class), `schema` (only those reachable from a class defined in the root schema), or `skip` (every class). |
+| `tree-root`         | –          | **generate frictionless:** tree root class name to use instead of the schema's own `tree_root`. Only has an effect with `pruning-mode: treeRoot`. |
+| `skip-classes-without-identifier` | `false` | **generate frictionless:** skip classes with no identifier slot. Such a table gets no primary key and nothing can reference it. |
 | `imports`           | –          | Directory of extra `.yaml` schemas made available to `imports:` (keyed by path, relative to `working-directory`). |
-| `ignore`            | –          | Newline-separated substrings of problems to silence. |
+| `ignore`            | –          | Newline-separated issue type names to silence, one per line. |
 | `annotations`       | `true`     | Emit GitHub error/warning annotations. |
 | `working-directory` | `.`        | Base directory for resolving `files`, `imports`, and `output`. |
 
@@ -82,14 +88,14 @@ Loading a schema validates it, so both commands report the same problems. Each h
 | `ERROR`   | The schema loaded but is invalid (e.g. two `tree_root` classes, a non-unique name). | Fails the step. Generation still runs, so the output is there to inspect. |
 | `WARNING` | Advisory (e.g. no `tree_root` class). | Reported only; fails the step when `strict: true`. |
 
-- **Generators** write one output file per input schema into `output`, named after the schema (`person.yaml` → `person.schema.json`). The `scala` generator can emit multiple files per schema, so those go under `output/<schema-name>/`.
+- **Generators** write one output file per input schema into `output`, named after the schema (`person.yaml` → `person.schema.json`). The `scala` and `frictionless` generators emit multiple files per schema, so those go under `output/<schema-name>/` (for `frictionless`, a `datapackage.json` plus one `schemas/<table>.json` per table).
 - **Imports:** if your schemas use `imports: [shared]`, point `imports` at a directory containing `shared.yaml`. Files are keyed by filename.
-- **`ignore`** silences a problem of any severity whose message contains one of the given substrings. Silenced problems are still logged (prefixed `(ignored)`) but are not annotated, not counted in `problems`, and do not affect the exit code.
+- **`ignore`** silences problems by *issue type*. Every problem the engine reports is tagged with the class it belongs to in the validation report.
 
 ## Resolving imports – example
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.15.0
         with:
           command: generate
           generator: shacl
@@ -103,7 +109,7 @@ Loading a schema validates it, so both commands report the same problems. Each h
 The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version. Pin an exact tag:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.14.0
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.15.0
 ```
 
 New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, updates the examples above, and – only if that passes – cuts the matching `vX.Y.Z` release. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).

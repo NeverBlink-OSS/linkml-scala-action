@@ -18,7 +18,7 @@ inputs:
     required: false
     default: "false"
   generator:
-    description: "generate only: json-schema | shacl | rdfs | linkml | table-schema | graphql | scala."
+    description: "generate only: json-schema | shacl | rdfs | linkml | frictionless | graphql | scala."
     required: false
     default: ""
   output:
@@ -29,16 +29,32 @@ inputs:
     description: "generate json-schema/shacl only: allow additional properties (open shapes)."
     required: false
     default: "false"
+  format:
+    description: "generate shacl/rdfs only: RDF serialization. 'ttl' for Turtle (prefixed and pretty-printed) or 'nt' for N-Triples."
+    required: false
+    default: "ttl"
   package:
     description: "generate scala only: target package name."
     required: false
     default: "linkml"
+  pruning-mode:
+    description: "generate frictionless only: which classes become tables. 'treeRoot' = only those reachable from the tree_root class, 'schema' = only those reachable from a class defined in the root schema, 'skip' = every class."
+    required: false
+    default: "skip"
+  tree-root:
+    description: "generate frictionless only: tree root class name to use instead of the schema's own tree_root. Only has an effect with pruning-mode: treeRoot."
+    required: false
+    default: ""
+  skip-classes-without-identifier:
+    description: "generate frictionless only: skip classes with no identifier slot. Such a table gets no primary key and nothing can reference it."
+    required: false
+    default: "false"
   imports:
     description: "Optional directory of extra .yaml schemas to make available to `imports:` (keyed by filename)."
     required: false
     default: ""
   ignore:
-    description: "Newline-separated list of substrings; any validation problem whose message contains one is silenced (not annotated, not counted, no effect on the exit code). Still logged for auditability. e.g. \"No 'tree_root' class\" or \"Unknown reference\"."
+    description: "Newline-separated list of issue type names (a problem's `issue_type`, shown in square brackets when it is reported), e.g. NoTreeRootClass or UnknownReference. A matching problem is not annotated, not counted, and has no effect on the exit code. Still logged for auditability."
     required: false
     default: ""
   annotations:
