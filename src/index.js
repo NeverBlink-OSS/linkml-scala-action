@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.14.0";
+const LINKML_VERSION = "0.15.0";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -44,31 +44,51 @@ function fail(message) {
   process.exitCode = 1;
 }
 
+// Accepted values for the inputs that are passed straight through to the
+// engine. Checked up front so a typo is a clear action error rather than an
+// opaque failure from inside linkml-scala.
+const RDF_FORMATS = ["ttl", "nt"];
+// Keyed by the lowercased input, valued by the spelling linkml-scala expects.
+const PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
+
 // ---------------------------------------------------------------------------
 // Generator registry: how each generator turns a loaded SchemaView into output,
 // and where that output goes. `multi` returns a { filename: contents } map.
 // ---------------------------------------------------------------------------
-function buildGenerators({ open, packageName }) {
+function buildGenerators({
+  open,
+  packageName,
+  format,
+  pruningMode,
+  treeRoot,
+  skipClassesWithoutIdentifier,
+}) {
   return {
     "json-schema": {
       ext: ".schema.json",
       run: (v) => LinkML.jsonSchema(v, open),
     },
     shacl: {
-      ext: ".shacl.nt",
-      run: (v) => LinkML.shacl(v, open),
+      ext: `.shacl.${format}`,
+      run: (v) => LinkML.shacl(v, open, false, format),
     },
     rdfs: {
-      ext: ".rdfs.nt",
-      run: (v) => LinkML.rdfs(v, false),
+      ext: `.rdfs.${format}`,
+      run: (v) => LinkML.rdfs(v, false, format),
     },
     linkml: {
       ext: ".materialized.yaml",
       run: (v) => LinkML.linkml(v),
     },
-    "table-schema": {
-      ext: ".table.json",
-      run: (v) => LinkML.tableSchema(v),
+    frictionless: {
+      multi: true,
+      run: (v) =>
+        LinkML.frictionless(
+          v,
+          pruningMode,
+          treeRoot || undefined,
+          skipClassesWithoutIdentifier
+        ),
     },
     graphql: {
       ext: ".graphql",
@@ -144,12 +164,17 @@ const isWarning = (issue) =>
 function issueText(issue) {
   const body = issue.details || issue.message;
   const pointer = issue.location?.json_pointer;
+  // The issue type is what `ignore` matches on, so print it alongside the
+  // problem – otherwise there is no way to find out what to write there.
+  const type = issue.issue_type ? ` [${issue.issue_type}]` : "";
   if (!body) {
-    return `${issue.severity ?? "ERROR"} problem${pointer ? ` at ${pointer}` : ""}`;
+    return `${issue.severity ?? "ERROR"} problem${pointer ? ` at ${pointer}` : ""}${type}`;
   }
   // The inferred text usually already ends with "at <pointer>"; only append the
   // pointer when it doesn't, so it isn't printed twice.
-  return pointer && !body.includes(pointer) ? `${body} at ${pointer}` : body;
+  const withPointer =
+    pointer && !body.includes(pointer) ? `${body} at ${pointer}` : body;
+  return `${withPointer}${type}`;
 }
 
 // GitHub annotation position for an issue, when the engine pinned down a code
@@ -166,22 +191,38 @@ function position(issue) {
   return pos;
 }
 
-// Parse the `ignore` input into lower-cased substrings, one per line. A problem
-// whose message contains any of these is silenced (not annotated, not counted,
-// no effect on the exit code) — but still logged, so it stays auditable.
+// A bare class name, which is what a type designator holds.
+const ISSUE_TYPE_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+
+// `ignore` names issue types to silence. The engine tags every problem with its
+// class from the validation-report model in `issue_type` (the model's type
+// designator) – `NoTreeRootClass`, `UnknownReference`, and so on – and that is
+// what an entry has to be. A matching problem is silenced (not annotated, not
+// counted, no effect on the exit code) but still logged, so it stays auditable.
+// Returns null when an entry isn't a class name, which is almost always a
+// message substring left over from how `ignore` used to work; silently
+// matching nothing would be worse than saying so.
 function parseIgnore() {
-  return getInput("ignore")
+  const entries = getInput("ignore")
     .split("\n")
-    .map((s) => s.trim().toLowerCase())
+    .map((s) => s.trim())
     .filter(Boolean);
+  const bad = entries.filter((e) => !ISSUE_TYPE_RE.test(e));
+  if (bad.length) {
+    fail(
+      `Not an issue type: ${bad.map((e) => `'${e}'`).join(", ")}. ` +
+        "`ignore` takes the issue type names shown in square brackets on each " +
+        "reported problem (e.g. NoTreeRootClass), not message text."
+    );
+    return null;
+  }
+  return entries.map((e) => e.toLowerCase());
 }
 
-// Match against both message and details, so a pattern written against the
-// short message still silences the issue when the long form is what's shown.
-const isIgnored = (issue, ignore) => {
-  const hay = `${issue.message ?? ""}\n${issue.details ?? ""}`.toLowerCase();
-  return ignore.some((p) => hay.includes(p));
-};
+// Exact match, not substring: `InvalidRange` must not silence
+// `InvalidDefaultRange`.
+const isIgnored = (issue, ignore) =>
+  ignore.includes(String(issue.issue_type ?? "").toLowerCase());
 
 // ---------------------------------------------------------------------------
 // Load a schema. Loading is validating: linkml-scala lints on the way through,
@@ -199,7 +240,9 @@ function loadSchema(file, pool, baseDir) {
   } catch (e) {
     return {
       view: undefined,
-      issues: [{ severity: "FATAL", message: errMessage(e) }],
+      issues: [
+        { issue_type: "UnexpectedError", severity: "FATAL", message: errMessage(e) },
+      ],
     };
   }
 }
@@ -244,12 +287,15 @@ function runValidate(files, pool, baseDir, strict, ignore) {
   return problems;
 }
 
-function writeSingle(outDir, file, contents, ext) {
-  const base = path.basename(file).replace(/\.ya?ml$/i, "");
-  const dest = path.join(outDir, base + ext);
+function writeAt(dest, contents) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, contents);
   info(`  → ${path.relative(process.cwd(), dest)}`);
+}
+
+function writeSingle(outDir, file, contents, ext) {
+  const base = path.basename(file).replace(/\.ya?ml$/i, "");
+  writeAt(path.join(outDir, base + ext), contents);
 }
 
 function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
@@ -282,7 +328,11 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore)
     try {
       result = gen.run(view);
     } catch (e) {
-      const issue = { severity: "FATAL", message: errMessage(e) };
+      const issue = {
+        issue_type: "UnexpectedError",
+        severity: "FATAL",
+        message: errMessage(e),
+      };
       if (isIgnored(issue, ignore)) {
         info(`  (ignored) ${issue.message}`);
         info(`✓ ${rel} (problems ignored; no output generated)`);
@@ -296,10 +346,12 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore)
 
     info(`${failed ? "✗" : "✓"} ${rel}`);
     if (gen.multi) {
-      // { filename: contents } – write under <outDir>/<schema>/<filename>.
+      // { filename: contents } – write under <outDir>/<schema>/<filename>. A
+      // name may itself contain directories (frictionless emits
+      // `schemas/<table>.json`), so keep it as-is rather than flattening it.
       const base = path.basename(file).replace(/\.ya?ml$/i, "");
       for (const [name, contents] of Object.entries(result)) {
-        if (outDir) writeSingle(path.join(outDir, base), name, contents, "");
+        if (outDir) writeAt(path.join(outDir, base, name), contents);
         else info(`----- ${name} -----\n${contents}`);
       }
     } else if (outDir) {
@@ -344,6 +396,7 @@ function main() {
     getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
   );
   const ignore = parseIgnore();
+  if (ignore === null) return;
   const strict = getBool("strict");
 
   let problems = 0;
@@ -351,9 +404,28 @@ function main() {
     problems = runValidate(files, pool, baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
+    const format = getInput("format", "ttl").toLowerCase() || "ttl";
+    if (!RDF_FORMATS.includes(format)) {
+      fail(`Unknown format '${format}'. Expected one of: ${RDF_FORMATS.join(", ")}.`);
+      return;
+    }
+    const modeInput = getInput("pruning-mode", "skip").toLowerCase() || "skip";
+    if (!Object.hasOwn(PRUNING_MODES, modeInput)) {
+      fail(
+        `Unknown pruning-mode '${modeInput}'. Expected one of: ${Object.values(
+          PRUNING_MODES
+        ).join(", ")}.`
+      );
+      return;
+    }
+    const pruningMode = PRUNING_MODES[modeInput];
     const generators = buildGenerators({
       open: getBool("open"),
       packageName: getInput("package", "linkml"),
+      format,
+      pruningMode,
+      treeRoot: getInput("tree-root"),
+      skipClassesWithoutIdentifier: getBool("skip-classes-without-identifier"),
     });
     const gen = generators[genName];
     if (!gen) {

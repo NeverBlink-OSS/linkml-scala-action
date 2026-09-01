@@ -1,0 +1,29 @@
+# Two related classes: Person has an identifier and can be a table with a
+# primary key, Address has none. Used to exercise the frictionless generator.
+id: https://example.org/tables
+name: tables
+title: Tables schema
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ex: https://example.org/
+default_prefix: ex
+default_range: string
+imports:
+  - linkml:types
+tree_root: Person
+classes:
+  Person:
+    tree_root: true
+    attributes:
+      id:
+        identifier: true
+        range: string
+      full_name:
+        required: true
+        range: string
+      address:
+        range: Address
+  Address:
+    attributes:
+      city:
+        range: string
