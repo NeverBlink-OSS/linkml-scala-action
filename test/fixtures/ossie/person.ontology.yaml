@@ -1,0 +1,29 @@
+# An Apache Ossie ontology, as produced by `generate ossie` from
+# examples/person.yaml. Used to exercise the importer, which turns it back into
+# a LinkML schema.
+version: 0.2.0.dev0
+name: person
+ontology:
+  - concept: Person
+    type: EntityType
+    requires:
+      - Person.full_name
+    relationships:
+      - name: age
+        roles:
+          - concept: Integer
+        multiplicity: ManyToOne
+        verbalizes:
+          - "{Person} age {Integer}"
+      - name: email
+        roles:
+          - concept: String
+        multiplicity: ManyToOne
+        verbalizes:
+          - "{Person} email {String}"
+      - name: full_name
+        roles:
+          - concept: String
+        multiplicity: ManyToOne
+        verbalizes:
+          - "{Person} full name {String}"

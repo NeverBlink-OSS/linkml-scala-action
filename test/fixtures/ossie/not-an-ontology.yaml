@@ -1,0 +1,2 @@
+# Parses as YAML, but is not an Ossie ontology: the importer rejects it.
+hello: world

@@ -23896,9 +23896,9 @@ function $p_Leu_neverblink_linkml_schemaview_SchemaValidator__invalidUris__sci_S
   }
   return $thiz.a2s;
 }
-function $p_Leu_neverblink_linkml_schemaview_SchemaValidator__checkNaming__scm_Builder__T__T__Leu_neverblink_linkml_validation_IssueLocationImpl__V($thiz, builder, name, baseName, location) {
+function $p_Leu_neverblink_linkml_schemaview_SchemaValidator__checkNaming__scm_Builder__T__T__Leu_neverblink_linkml_validation_IssueLocationImpl__V($thiz, builder, name, baseName2, location) {
   if (name === "") {
-    builder.g(new $c_Leu_neverblink_linkml_validation_EmptyNameImpl($m_s_None$(), name, "EmptyName", location, $m_s_None$(), $m_Leu_neverblink_linkml_validation_IssueSeverity$Error$(), baseName));
+    builder.g(new $c_Leu_neverblink_linkml_validation_EmptyNameImpl($m_s_None$(), name, "EmptyName", location, $m_s_None$(), $m_Leu_neverblink_linkml_validation_IssueSeverity$Error$(), baseName2));
   } else {
     $m_sc_StringOps$();
     _return: {
@@ -23915,8 +23915,8 @@ function $p_Leu_neverblink_linkml_schemaview_SchemaValidator__checkNaming__scm_B
     }
     if ($x_1 !== -1) {
       builder.g(new $c_Leu_neverblink_linkml_validation_NonAsciiNameImpl($m_s_None$(), name, "NonAsciiName", location, $m_s_None$(), $m_Leu_neverblink_linkml_validation_IssueSeverity$Error$()));
-    } else if (baseName === "") {
-      builder.g(new $c_Leu_neverblink_linkml_validation_EmptyNameImpl($m_s_None$(), name, "EmptyName", location, $m_s_None$(), $m_Leu_neverblink_linkml_validation_IssueSeverity$Error$(), baseName));
+    } else if (baseName2 === "") {
+      builder.g(new $c_Leu_neverblink_linkml_validation_EmptyNameImpl($m_s_None$(), name, "EmptyName", location, $m_s_None$(), $m_Leu_neverblink_linkml_validation_IssueSeverity$Error$(), baseName2));
     } else {
       $m_sc_StringOps$();
       _return$1: {
@@ -47370,8 +47370,8 @@ function $f_Leu_neverblink_linkml_generator_graphql_GraphQlElement__descriptionF
 function $p_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__fix__T__T($thiz, value) {
   return value === "" ? "_" : $m_Leu_neverblink_linkml_schemaview_Case$().EJ($m_sc_StringOps$().LU(value)) ? "_" + value : value;
 }
-function $p_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__graphQlPascal__T__T($thiz, baseName) {
-  return $p_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__fix__T__T($thiz, $m_Leu_neverblink_linkml_schemaview_Case$().g5(baseName));
+function $p_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__graphQlPascal__T__T($thiz, baseName2) {
+  return $p_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__fix__T__T($thiz, $m_Leu_neverblink_linkml_schemaview_Case$().g5(baseName2));
 }
 function $f_Leu_neverblink_linkml_generator_graphql_GraphQlRenamer__permissibleValueName__Leu_neverblink_linkml_metamodel_PermissibleValue__T($thiz, pv) {
   var input = $m_Leu_neverblink_linkml_schemaview_Case$().d7(pv.gM);
@@ -48298,12 +48298,12 @@ function $m_Leu_neverblink_linkml_generator_rdf_XmlSchema$() {
   }
   return $n_Leu_neverblink_linkml_generator_rdf_XmlSchema$;
 }
-function $f_Leu_neverblink_linkml_generator_scala_ScalaRenamer__scalaPascal__T__T($thiz, baseName) {
-  var name = $m_Leu_neverblink_linkml_schemaview_Case$().g5(baseName);
+function $f_Leu_neverblink_linkml_generator_scala_ScalaRenamer__scalaPascal__T__T($thiz, baseName2) {
+  var name = $m_Leu_neverblink_linkml_schemaview_Case$().g5(baseName2);
   return name === "" ? "__" : $m_Leu_neverblink_linkml_schemaview_Case$().EJ($m_sc_StringOps$().LU(name)) ? "_" + name : $m_Leu_neverblink_linkml_generator_scala_ScalaWords$().UF.at(name) ? "_" + name : name;
 }
-function $f_Leu_neverblink_linkml_generator_scala_ScalaRenamer__scalaCamel__T__T($thiz, baseName) {
-  var name = $m_Leu_neverblink_linkml_schemaview_Case$().a8l(baseName);
+function $f_Leu_neverblink_linkml_generator_scala_ScalaRenamer__scalaCamel__T__T($thiz, baseName2) {
+  var name = $m_Leu_neverblink_linkml_schemaview_Case$().a8l(baseName2);
   return name === "" ? "__" : $m_Leu_neverblink_linkml_schemaview_Case$().EJ($m_sc_StringOps$().LU(name)) ? "_" + name : $m_Leu_neverblink_linkml_generator_scala_ScalaWords$().a18.at(name) ? "`" + name + "`" : $m_Leu_neverblink_linkml_generator_scala_ScalaWords$().UF.at(name) ? "_" + name : name;
 }
 function $f_Leu_neverblink_linkml_generator_scala_ScalaRenamer__classAttributeName__Leu_neverblink_linkml_schemaview_ClassView__Leu_neverblink_linkml_metamodel_SlotDefinition__T($thiz, el, attr) {
@@ -135839,8 +135839,24 @@ function fail(message) {
   annotate("error", message);
   process.exitCode = 1;
 }
-var RDF_FORMATS = ["ttl", "nt"];
+var FORMATS = {
+  shacl: ["ttl", "nt"],
+  rdfs: ["ttl", "nt"],
+  ossie: ["yaml", "json"]
+};
 var PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
+function resolveFormat(name, input) {
+  const allowed = FORMATS[name];
+  if (!allowed) return "";
+  const format = input || allowed[0];
+  if (!allowed.includes(format)) {
+    fail(
+      `Unknown format '${format}' for '${name}'. Expected one of: ${allowed.join(", ")}.`
+    );
+    return null;
+  }
+  return format;
+}
 function buildGenerators({
   open,
   packageName,
@@ -135879,9 +135895,21 @@ function buildGenerators({
       ext: ".graphql",
       run: (v) => $e_LinkML.graphQl(v)
     },
+    ossie: {
+      ext: `.ossie.${format}`,
+      run: (v) => $e_LinkML.ossie(v, pruningMode, treeRoot || void 0, format)
+    },
     scala: {
       multi: true,
       run: (v) => $e_LinkML.scala(v, packageName)
+    }
+  };
+}
+function buildImporters({ schemaId, format }) {
+  return {
+    ossie: {
+      ext: `.linkml.${format}`,
+      run: (text) => $e_LinkML.fromOssie(text, schemaId || void 0, format)
     }
   };
 }
@@ -135998,9 +136026,9 @@ function writeAt(dest, contents) {
   fs2.writeFileSync(dest, contents);
   info(`  \u2192 ${path2.relative(process.cwd(), dest)}`);
 }
+var baseName = (file) => path2.basename(file).replace(/\.(ya?ml|json)$/i, "");
 function writeSingle(outDir, file, contents, ext) {
-  const base = path2.basename(file).replace(/\.ya?ml$/i, "");
-  writeAt(path2.join(outDir, base + ext), contents);
+  writeAt(path2.join(outDir, baseName(file) + ext), contents);
 }
 function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
   let problems = 0;
@@ -136040,7 +136068,7 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore)
     }
     info(`${failed ? "\u2717" : "\u2713"} ${rel}`);
     if (gen.multi) {
-      const base = path2.basename(file).replace(/\.ya?ml$/i, "");
+      const base = baseName(file);
       for (const [name, contents] of Object.entries(result)) {
         if (outDir) writeAt(path2.join(outDir, base, name), contents);
         else info(`----- ${name} -----
@@ -136052,6 +136080,37 @@ ${contents}`);
       info(`----- ${rel} \u2192 ${genName} -----
 ${result}`);
     }
+  }
+  return problems;
+}
+function runImport(files, imp, impName, outDir, ignore) {
+  let problems = 0;
+  if (outDir) fs2.mkdirSync(outDir, { recursive: true });
+  for (const file of files) {
+    const rel = path2.relative(process.cwd(), file);
+    let result;
+    try {
+      result = imp.run(fs2.readFileSync(file, "utf8"));
+    } catch (e) {
+      const issue = {
+        issue_type: "UnexpectedError",
+        severity: "FATAL",
+        message: errMessage(e)
+      };
+      if (isIgnored(issue, ignore)) {
+        info(`  (ignored) ${issue.message}`);
+        info(`\u2713 ${rel} (problems ignored; no output generated)`);
+        continue;
+      }
+      problems++;
+      annotate("error", issueText(issue), { file: rel });
+      fail(`${rel}: ${impName} import failed`);
+      continue;
+    }
+    info(`\u2713 ${rel}`);
+    if (outDir) writeSingle(outDir, file, result, imp.ext);
+    else info(`----- ${rel} \u2192 LinkML -----
+${result}`);
   }
   return problems;
 }
@@ -136075,24 +136134,22 @@ function main() {
     fail(`No schema files matched: ${filesSpec}`);
     return;
   }
-  const pool = buildImportMap(
+  const importMap = () => buildImportMap(
     baseDir,
     files,
     getInput("imports") ? path2.resolve(baseDir, getInput("imports")) : ""
   );
+  const outputDir = () => getInput("output") ? path2.resolve(baseDir, getInput("output")) : "";
   const ignore = parseIgnore();
   if (ignore === null) return;
   const strict = getBool("strict");
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, pool, baseDir, strict, ignore);
+    problems = runValidate(files, importMap(), baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
-    const format = getInput("format", "ttl").toLowerCase() || "ttl";
-    if (!RDF_FORMATS.includes(format)) {
-      fail(`Unknown format '${format}'. Expected one of: ${RDF_FORMATS.join(", ")}.`);
-      return;
-    }
+    const format = resolveFormat(genName, getInput("format").toLowerCase());
+    if (format === null) return;
     const modeInput = getInput("pruning-mode", "skip").toLowerCase() || "skip";
     if (!Object.hasOwn(PRUNING_MODES, modeInput)) {
       fail(
@@ -136120,19 +136177,42 @@ function main() {
       );
       return;
     }
-    const outDir = getInput("output") ? path2.resolve(baseDir, getInput("output")) : "";
     problems = runGenerate(
       files,
-      pool,
+      importMap(),
       baseDir,
       gen,
       genName,
-      outDir,
+      outputDir(),
       strict,
       ignore
     );
+  } else if (command === "import") {
+    const impName = getInput("importer").toLowerCase();
+    const format = resolveFormat(impName, getInput("format").toLowerCase());
+    if (format === null) return;
+    const schemaId = getInput("schema-id");
+    const importers = buildImporters({ schemaId, format });
+    const imp = importers[impName];
+    if (!imp) {
+      fail(
+        `Unknown importer '${impName || "(none)"}'. Expected one of: ${Object.keys(
+          importers
+        ).join(", ")}.`
+      );
+      return;
+    }
+    if (schemaId && files.length > 1) {
+      fail(
+        `\`schema-id\` sets the id of a single schema, but ${files.length} files matched. Import them one at a time, or drop \`schema-id\` to let each schema get its own default id.`
+      );
+      return;
+    }
+    problems = runImport(files, imp, impName, outputDir(), ignore);
   } else {
-    fail(`Unknown command '${command}'. Expected 'validate' or 'generate'.`);
+    fail(
+      `Unknown command '${command}'. Expected 'validate', 'generate' or 'import'.`
+    );
     return;
   }
   setOutput("problems", String(problems));

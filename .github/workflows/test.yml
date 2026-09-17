@@ -50,6 +50,31 @@ jobs:
           files: examples/person.yaml
           output: build/json-schema
 
+      - name: Generate an Ossie ontology
+        uses: ./
+        with:
+          command: generate
+          generator: ossie
+          files: examples/person.yaml
+          output: build/ossie
+
+      - name: Import the ontology back into a LinkML schema
+        uses: ./
+        with:
+          command: import
+          importer: ossie
+          files: build/ossie/person.ossie.yaml
+          output: build/from-ossie
+
+      # An Ossie ontology has no notion of a tree root, so the schema that
+      # comes back cannot have one either.
+      - name: The round-tripped schema should still validate
+        uses: ./
+        with:
+          command: validate
+          files: build/from-ossie/person.ossie.linkml.yaml
+          ignore: NoTreeRootClass
+
       - name: A broken schema should fail
         id: broken
         continue-on-error: true

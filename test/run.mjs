@@ -329,6 +329,114 @@ run("generate on an unresolvable import fails without output", {
   output: path.relative(ROOT, outDir),
 }, { code: 1, stdoutIncludes: ["::error", "generation failed"] });
 
+// --- Apache Ossie: the `ossie` generator and the `import` command -----------
+
+run("generate ossie writes an ontology as YAML by default", {
+  command: "generate",
+  generator: "ossie",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.ossie.yaml")] });
+
+run("format: json switches ossie to JSON (.ossie.json)", {
+  command: "generate",
+  generator: "ossie",
+  format: "json",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.ossie.json")] });
+
+run("generate ossie to the log names the schema's classes as concepts", {
+  command: "generate",
+  generator: "ossie",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["concept: Person", "type: EntityType"] });
+
+// `format` is per-generator: an RDF serialization is not one of ossie's.
+run("an RDF format is rejected for ossie", {
+  command: "generate",
+  generator: "ossie",
+  format: "ttl",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown format", "yaml, json"] });
+
+// ...and the other way round.
+run("a document format is rejected for shacl", {
+  command: "generate",
+  generator: "shacl",
+  format: "yaml",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown format", "ttl, nt"] });
+
+run("import ossie turns an ontology back into a LinkML schema", {
+  command: "import",
+  importer: "ossie",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 0,
+  outputsInclude: ["problems<<", "0"],
+  filesExist: [path.join(path.relative(ROOT, outDir), "person.ontology.linkml.yaml")],
+});
+
+run("import ossie can write the schema as JSON", {
+  command: "import",
+  importer: "ossie",
+  format: "json",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 0,
+  filesExist: [path.join(path.relative(ROOT, outDir), "person.ontology.linkml.json")],
+});
+
+run("an imported schema keeps the ontology's classes and slots", {
+  command: "import",
+  importer: "ossie",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+}, { code: 0, stdoutIncludes: ["classes:", "Person:", "full_name:"] });
+
+run("schema-id sets the id of the imported schema", {
+  command: "import",
+  importer: "ossie",
+  "schema-id": "https://example.org/imported",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+}, { code: 0, stdoutIncludes: ["id: https://example.org/imported"] });
+
+// One id cannot be shared by several schemas, so this is refused rather than
+// quietly applied to each of them.
+run("schema-id with more than one input fails", {
+  command: "import",
+  importer: "ossie",
+  "schema-id": "https://example.org/imported",
+  files: "test/fixtures/ossie/*.yaml",
+}, { code: 1, stdoutIncludes: ["schema-id", "2 files"] });
+
+run("import rejects a document that is not an ontology", {
+  command: "import",
+  importer: "ossie",
+  files: "test/fixtures/ossie/not-an-ontology.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 1, stdoutIncludes: ["::error", "import failed"] });
+
+run("a rejected document can be silenced with ignore", {
+  command: "import",
+  importer: "ossie",
+  ignore: "UnexpectedError",
+  files: "test/fixtures/ossie/not-an-ontology.yaml",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::error"] });
+
+run("import with an unknown importer fails", {
+  command: "import",
+  importer: "owl",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown importer", "ossie"] });
+
+run("import without an importer fails", {
+  command: "import",
+  files: "test/fixtures/ossie/person.ontology.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown importer", "(none)"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);

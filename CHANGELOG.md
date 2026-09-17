@@ -2,6 +2,17 @@
 
 Notes for breaking changes and new features in releases from v0.15.0 on. Earlier releases are described on the [Releases page](https://github.com/NeverBlink-OSS/linkml-scala-action/releases).
 
+## v0.16.1
+
+### Added
+
+- `generator: ossie` – generate an [Apache Ossie](https://github.com/apache/ossie) ontology from a LinkML schema. Honours `pruning-mode` and `tree-root`, and writes YAML or JSON (`format`).
+- `command: import` with `importer: ossie` – the opposite direction: read an Ossie ontology and write the LinkML schema it describes. `schema-id` sets the `id` of that schema; `format` picks YAML or JSON.
+
+### Changed
+
+- `format` now depends on the generator: `ttl`/`nt` for `shacl` and `rdfs` (unchanged), `yaml`/`json` for `ossie` and for `import`. A generator that takes no format ignores the input instead of rejecting an unknown value.
+
 ## v0.15.0
 
 Bundles [`@neverblink/linkml@0.15.0`](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v0.15.0).

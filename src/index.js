@@ -47,9 +47,34 @@ function fail(message) {
 // Accepted values for the inputs that are passed straight through to the
 // engine. Checked up front so a typo is a clear action error rather than an
 // opaque failure from inside linkml-scala.
-const RDF_FORMATS = ["ttl", "nt"];
+//
+// `format` means different things to different generators, so it is keyed by
+// the generator (or importer) name, with the default first. A name that isn't
+// listed here takes no format at all and ignores the input. `ossie` is both a
+// generator and an importer and takes the same formats either way.
+const FORMATS = {
+  shacl: ["ttl", "nt"],
+  rdfs: ["ttl", "nt"],
+  ossie: ["yaml", "json"],
+};
 // Keyed by the lowercased input, valued by the spelling linkml-scala expects.
 const PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
+
+// Resolve `format` for the chosen generator/importer: its own default when the
+// input is blank, "" when it takes no format, and null (after failing the run)
+// when the value isn't one it accepts.
+function resolveFormat(name, input) {
+  const allowed = FORMATS[name];
+  if (!allowed) return "";
+  const format = input || allowed[0];
+  if (!allowed.includes(format)) {
+    fail(
+      `Unknown format '${format}' for '${name}'. Expected one of: ${allowed.join(", ")}.`
+    );
+    return null;
+  }
+  return format;
+}
 
 // ---------------------------------------------------------------------------
 // Generator registry: how each generator turns a loaded SchemaView into output,
@@ -94,9 +119,28 @@ function buildGenerators({
       ext: ".graphql",
       run: (v) => LinkML.graphQl(v),
     },
+    ossie: {
+      ext: `.ossie.${format}`,
+      run: (v) => LinkML.ossie(v, pruningMode, treeRoot || undefined, format),
+    },
     scala: {
       multi: true,
       run: (v) => LinkML.scala(v, packageName),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Importer registry: the other direction – read a document in some other format
+// and produce the LinkML schema it describes (the CLI's `from <name>`). The
+// input is not a LinkML schema, so it is passed through as text rather than
+// loaded into a SchemaView.
+// ---------------------------------------------------------------------------
+function buildImporters({ schemaId, format }) {
+  return {
+    ossie: {
+      ext: `.linkml.${format}`,
+      run: (text) => LinkML.fromOssie(text, schemaId || undefined, format),
     },
   };
 }
@@ -293,9 +337,12 @@ function writeAt(dest, contents) {
   info(`  → ${path.relative(process.cwd(), dest)}`);
 }
 
+// Output name for an input document: its basename without the extension. The
+// importer also takes JSON input, so that extension is stripped too.
+const baseName = (file) => path.basename(file).replace(/\.(ya?ml|json)$/i, "");
+
 function writeSingle(outDir, file, contents, ext) {
-  const base = path.basename(file).replace(/\.ya?ml$/i, "");
-  writeAt(path.join(outDir, base + ext), contents);
+  writeAt(path.join(outDir, baseName(file) + ext), contents);
 }
 
 function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
@@ -349,7 +396,7 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore)
       // { filename: contents } – write under <outDir>/<schema>/<filename>. A
       // name may itself contain directories (frictionless emits
       // `schemas/<table>.json`), so keep it as-is rather than flattening it.
-      const base = path.basename(file).replace(/\.ya?ml$/i, "");
+      const base = baseName(file);
       for (const [name, contents] of Object.entries(result)) {
         if (outDir) writeAt(path.join(outDir, base, name), contents);
         else info(`----- ${name} -----\n${contents}`);
@@ -359,6 +406,46 @@ function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore)
     } else {
       info(`----- ${rel} → ${genName} -----\n${result}`);
     }
+  }
+  return problems;
+}
+
+// ---------------------------------------------------------------------------
+// Importing is the opposite of generating: the inputs are documents in another
+// format, so there is no schema to load and no validation report to go with it.
+// The only problem an import can produce is the engine rejecting the document,
+// which is surfaced the same way as a generator throwing – as a synthetic fatal
+// issue, so it stays annotated, counted and silenceable via `ignore`.
+// ---------------------------------------------------------------------------
+function runImport(files, imp, impName, outDir, ignore) {
+  let problems = 0;
+  if (outDir) fs.mkdirSync(outDir, { recursive: true });
+  for (const file of files) {
+    const rel = path.relative(process.cwd(), file);
+
+    let result;
+    try {
+      result = imp.run(fs.readFileSync(file, "utf8"));
+    } catch (e) {
+      const issue = {
+        issue_type: "UnexpectedError",
+        severity: "FATAL",
+        message: errMessage(e),
+      };
+      if (isIgnored(issue, ignore)) {
+        info(`  (ignored) ${issue.message}`);
+        info(`✓ ${rel} (problems ignored; no output generated)`);
+        continue;
+      }
+      problems++;
+      annotate("error", issueText(issue), { file: rel });
+      fail(`${rel}: ${impName} import failed`);
+      continue;
+    }
+
+    info(`✓ ${rel}`);
+    if (outDir) writeSingle(outDir, file, result, imp.ext);
+    else info(`----- ${rel} → LinkML -----\n${result}`);
   }
   return problems;
 }
@@ -390,25 +477,26 @@ function main() {
     return;
   }
 
-  const pool = buildImportMap(
-    baseDir,
-    files,
-    getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
-  );
+  // Only validate/generate load schemas; an import reads its inputs as text.
+  const importMap = () =>
+    buildImportMap(
+      baseDir,
+      files,
+      getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
+    );
+  const outputDir = () =>
+    getInput("output") ? path.resolve(baseDir, getInput("output")) : "";
   const ignore = parseIgnore();
   if (ignore === null) return;
   const strict = getBool("strict");
 
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, pool, baseDir, strict, ignore);
+    problems = runValidate(files, importMap(), baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
-    const format = getInput("format", "ttl").toLowerCase() || "ttl";
-    if (!RDF_FORMATS.includes(format)) {
-      fail(`Unknown format '${format}'. Expected one of: ${RDF_FORMATS.join(", ")}.`);
-      return;
-    }
+    const format = resolveFormat(genName, getInput("format").toLowerCase());
+    if (format === null) return;
     const modeInput = getInput("pruning-mode", "skip").toLowerCase() || "skip";
     if (!Object.hasOwn(PRUNING_MODES, modeInput)) {
       fail(
@@ -436,21 +524,46 @@ function main() {
       );
       return;
     }
-    const outDir = getInput("output")
-      ? path.resolve(baseDir, getInput("output"))
-      : "";
     problems = runGenerate(
       files,
-      pool,
+      importMap(),
       baseDir,
       gen,
       genName,
-      outDir,
+      outputDir(),
       strict,
       ignore
     );
+  } else if (command === "import") {
+    const impName = getInput("importer").toLowerCase();
+    const format = resolveFormat(impName, getInput("format").toLowerCase());
+    if (format === null) return;
+    const schemaId = getInput("schema-id");
+    const importers = buildImporters({ schemaId, format });
+    const imp = importers[impName];
+    if (!imp) {
+      fail(
+        `Unknown importer '${impName || "(none)"}'. Expected one of: ${Object.keys(
+          importers
+        ).join(", ")}.`
+      );
+      return;
+    }
+    // `schema-id` names the one schema to produce, so it cannot be spread over
+    // several inputs – that would give every one of them the same `id`.
+    if (schemaId && files.length > 1) {
+      fail(
+        `\`schema-id\` sets the id of a single schema, but ${files.length} files ` +
+          "matched. Import them one at a time, or drop `schema-id` to let each " +
+          "schema get its own default id."
+      );
+      return;
+    }
+    problems = runImport(files, imp, impName, outputDir(), ignore);
   } else {
-    fail(`Unknown command '${command}'. Expected 'validate' or 'generate'.`);
+    fail(
+      `Unknown command '${command}'. Expected 'validate', 'generate' or 'import'.`
+    );
     return;
   }
 

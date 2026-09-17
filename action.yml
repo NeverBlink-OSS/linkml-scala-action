@@ -7,22 +7,26 @@ branding:
 
 inputs:
   command:
-    description: "What to run: 'validate' or 'generate'."
+    description: "What to run: 'validate', 'generate' or 'import'."
     required: false
     default: "validate"
   files:
-    description: "Schema files to process. Space- or newline-separated; globs (including **) are supported."
+    description: "Files to process – LinkML schemas, or the documents to read for 'import'. Space- or newline-separated; globs (including **) are supported."
     required: true
   strict:
     description: "Treat warnings as failures. Errors always fail, warnings only with this on."
     required: false
     default: "false"
   generator:
-    description: "generate only: json-schema | shacl | rdfs | linkml | frictionless | graphql | scala."
+    description: "generate only: json-schema | shacl | rdfs | linkml | frictionless | graphql | ossie | scala."
+    required: false
+    default: ""
+  importer:
+    description: "import only: the format to read and turn into a LinkML schema. Currently only 'ossie' (an Apache Ossie ontology)."
     required: false
     default: ""
   output:
-    description: "generate only: output directory. One file per input schema is written here. If empty, output is printed to the job log."
+    description: "generate/import only: output directory. One file per input is written here. If empty, output is printed to the job log."
     required: false
     default: ""
   open:
@@ -30,27 +34,31 @@ inputs:
     required: false
     default: "false"
   format:
-    description: "generate shacl/rdfs only: RDF serialization. 'ttl' for Turtle (prefixed and pretty-printed) or 'nt' for N-Triples."
+    description: "Output serialization. For generate shacl/rdfs: 'ttl' for Turtle (prefixed and pretty-printed, the default) or 'nt' for N-Triples. For generate ossie and for import: 'yaml' (the default) or 'json'. Other generators take no format."
     required: false
-    default: "ttl"
+    default: ""
   package:
     description: "generate scala only: target package name."
     required: false
     default: "linkml"
   pruning-mode:
-    description: "generate frictionless only: which classes become tables. 'treeRoot' = only those reachable from the tree_root class, 'schema' = only those reachable from a class defined in the root schema, 'skip' = every class."
+    description: "generate frictionless/ossie only: which classes become tables (frictionless) or which elements become concepts (ossie). 'treeRoot' = only those reachable from the tree_root class, 'schema' = only those reachable from a class defined in the root schema, 'skip' = all of them."
     required: false
     default: "skip"
   tree-root:
-    description: "generate frictionless only: tree root class name to use instead of the schema's own tree_root. Only has an effect with pruning-mode: treeRoot."
+    description: "generate frictionless/ossie only: tree root class name to use instead of the schema's own tree_root. Only has an effect with pruning-mode: treeRoot."
     required: false
     default: ""
   skip-classes-without-identifier:
     description: "generate frictionless only: skip classes with no identifier slot. Such a table gets no primary key and nothing can reference it."
     required: false
     default: "false"
+  schema-id:
+    description: "import only: the `id` of the LinkML schema to produce. Defaults to a placeholder built from the source document's name. Only valid when a single file is imported."
+    required: false
+    default: ""
   imports:
-    description: "Optional directory of extra .yaml schemas to make available to `imports:` (keyed by filename)."
+    description: "validate/generate only: optional directory of extra .yaml schemas to make available to `imports:` (keyed by filename)."
     required: false
     default: ""
   ignore:
@@ -70,7 +78,7 @@ outputs:
   problems:
     description: "Total number of problems found across all schemas."
   files:
-    description: "Number of schema files processed."
+    description: "Number of files processed."
   linkml-version:
     description: "The bundled linkml-scala version."
 
