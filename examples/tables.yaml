@@ -10,7 +10,6 @@ default_prefix: ex
 default_range: string
 imports:
   - linkml:types
-tree_root: Person
 classes:
   Person:
     tree_root: true
