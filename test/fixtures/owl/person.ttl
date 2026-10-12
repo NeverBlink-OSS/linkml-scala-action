@@ -1,0 +1,69 @@
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX linkml: <https://w3id.org/linkml/>
+PREFIX ex: <https://example.org/>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+PREFIX vann: <http://purl.org/vocab/vann/>
+
+ex:person a owl:Ontology ;
+  rdfs:label "Person schema" ;
+  vann:preferredNamespacePrefix "ex" ;
+  vann:preferredNamespaceUri "https://example.org/"^^xsd:anyURI ;
+  sh:declare [
+    sh:prefix "linkml" ;
+    sh:namespace "https://w3id.org/linkml/"^^xsd:anyURI
+  ] , [
+    sh:prefix "ex" ;
+    sh:namespace "https://example.org/"^^xsd:anyURI
+  ] .
+
+ex:Person a owl:Class ;
+  rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty ex:full_name ;
+    owl:allValuesFrom xsd:string
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty ex:full_name ;
+    owl:cardinality "1"^^xsd:nonNegativeInteger
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty ex:age ;
+    owl:allValuesFrom xsd:integer
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty ex:age ;
+    owl:maxCardinality "1"^^xsd:nonNegativeInteger
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty ex:email ;
+    owl:allValuesFrom xsd:string
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty ex:email ;
+    owl:maxCardinality "1"^^xsd:nonNegativeInteger
+  ] .
+
+ex:full_name a owl:DatatypeProperty ;
+  rdfs:range xsd:string ;
+  a owl:FunctionalProperty .
+
+ex:age a owl:DatatypeProperty ;
+  rdfs:range xsd:integer ;
+  a owl:FunctionalProperty .
+
+ex:email a owl:DatatypeProperty ;
+  rdfs:range xsd:string ;
+  a owl:FunctionalProperty .
+
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+
+sh:declare a owl:AnnotationProperty .
+
+sh:prefix a owl:AnnotationProperty .
+
+sh:namespace a owl:AnnotationProperty .

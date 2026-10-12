@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.16.3";
+const LINKML_VERSION = "0.17.0";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -50,21 +50,59 @@ function fail(message) {
 //
 // `format` means different things to different generators, so it is keyed by
 // the generator (or importer) name, with the default first. A name that isn't
-// listed here takes no format at all and ignores the input. `ossie` is both a
-// generator and an importer and takes the same formats either way.
-const FORMATS = {
+// listed here takes no format at all and ignores the input. Generators and
+// importers have separate tables because `owl` is both, and writes RDF one way
+// and a LinkML schema the other.
+const GENERATOR_FORMATS = {
   shacl: ["ttl", "nt"],
   rdfs: ["ttl", "nt"],
+  owl: ["ttl", "nt"],
+  linkml: ["yaml", "json"],
   ossie: ["yaml", "json"],
+};
+const IMPORTER_FORMATS = {
+  ossie: ["yaml", "json"],
+  owl: ["yaml", "json"],
 };
 // Keyed by the lowercased input, valued by the spelling linkml-scala expects.
 const PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
+// Inputs with a fixed set of values, default first. Unlike `format`, each one
+// means the same thing wherever it applies.
+const CHOICES = {
+  "metadata-profile": ["rdfs", "linkml"],
+  "permissible-values": ["individual", "class"],
+  target: [
+    "base",
+    "uri",
+    "scala",
+    "graphql",
+    "frictionless",
+    "ossie",
+    "erdiagram",
+    "json",
+    "typescript",
+    "pydantic",
+  ],
+  "input-format": ["ttl", "nt"],
+};
+
+// Resolve one of the CHOICES inputs: its default when blank, and null (after
+// failing the run) when the value isn't one of the accepted ones.
+function resolveChoice(name) {
+  const allowed = CHOICES[name];
+  const value = getInput(name).toLowerCase() || allowed[0];
+  if (!allowed.includes(value)) {
+    fail(`Unknown ${name} '${value}'. Expected one of: ${allowed.join(", ")}.`);
+    return null;
+  }
+  return value;
+}
 
 // Resolve `format` for the chosen generator/importer: its own default when the
 // input is blank, "" when it takes no format, and null (after failing the run)
 // when the value isn't one it accepts.
-function resolveFormat(name, input) {
-  const allowed = FORMATS[name];
+function resolveFormat(formats, name, input) {
+  const allowed = formats[name];
   if (!allowed) return "";
   const format = input || allowed[0];
   if (!allowed.includes(format)) {
@@ -80,6 +118,8 @@ function resolveFormat(name, input) {
 // Generator registry: how each generator turns a loaded SchemaView into output,
 // and where that output goes. `multi` returns a { filename: contents } map.
 // ---------------------------------------------------------------------------
+// `pruningMode` and `treeRoot` are undefined when not set, so each generator
+// falls back to its own default (they differ between generators).
 function buildGenerators({
   open,
   packageName,
@@ -87,41 +127,67 @@ function buildGenerators({
   pruningMode,
   treeRoot,
   skipClassesWithoutIdentifier,
+  onlyRootSchema,
+  metadataProfile,
+  permissibleValues,
+  skipDerivation,
+  includeNull,
+  optionalMarker,
+  target,
+  derivedAttributes,
 }) {
   return {
     "json-schema": {
       ext: ".schema.json",
-      run: (v) => LinkML.jsonSchema(v, open),
+      run: (v) => LinkML.jsonSchema(v, open, treeRoot),
     },
     shacl: {
       ext: `.shacl.${format}`,
-      run: (v) => LinkML.shacl(v, open, false, format),
+      run: (v) => LinkML.shacl(v, open, onlyRootSchema, format),
     },
     rdfs: {
       ext: `.rdfs.${format}`,
-      run: (v) => LinkML.rdfs(v, false, format),
+      run: (v) => LinkML.rdfs(v, onlyRootSchema, format),
+    },
+    owl: {
+      ext: `.owl.${format}`,
+      run: (v) =>
+        LinkML.owl(v, onlyRootSchema, metadataProfile, permissibleValues, format),
     },
     linkml: {
-      ext: ".materialized.yaml",
-      run: (v) => LinkML.linkml(v),
+      ext: `.materialized.${format}`,
+      run: (v) => LinkML.linkml(v, pruningMode, skipDerivation, treeRoot, format),
     },
     frictionless: {
       multi: true,
       run: (v) =>
-        LinkML.frictionless(
-          v,
-          pruningMode,
-          treeRoot || undefined,
-          skipClassesWithoutIdentifier
-        ),
+        LinkML.frictionless(v, pruningMode, treeRoot, skipClassesWithoutIdentifier),
     },
     graphql: {
       ext: ".graphql",
-      run: (v) => LinkML.graphQl(v),
+      run: (v) => LinkML.graphQl(v, pruningMode, treeRoot),
+    },
+    typescript: {
+      ext: ".ts",
+      run: (v) => LinkML.typeScript(v, pruningMode, treeRoot, includeNull, open),
+    },
+    pydantic: {
+      ext: ".py",
+      run: (v) => LinkML.pydantic(v, pruningMode, treeRoot, includeNull, open),
+    },
+    "er-diagram": {
+      ext: ".mmd",
+      run: (v) => LinkML.erDiagram(v, pruningMode, treeRoot, optionalMarker),
+    },
+    // The target is part of the name, so several targets can share an output
+    // directory.
+    translation: {
+      ext: `.translation.${target}.json`,
+      run: (v) => LinkML.translation(v, target, derivedAttributes),
     },
     ossie: {
       ext: `.ossie.${format}`,
-      run: (v) => LinkML.ossie(v, pruningMode, treeRoot || undefined, format),
+      run: (v) => LinkML.ossie(v, pruningMode, treeRoot, format),
     },
     scala: {
       multi: true,
@@ -136,13 +202,53 @@ function buildGenerators({
 // input is not a LinkML schema, so it is passed through as text rather than
 // loaded into a SchemaView.
 // ---------------------------------------------------------------------------
-function buildImporters({ schemaId, format }) {
+function buildImporters({
+  schemaId,
+  format,
+  owlConfig,
+  listNotImported,
+  importMap,
+  inputFormat,
+}) {
   return {
     ossie: {
       ext: `.linkml.${format}`,
       run: (text) => LinkML.fromOssie(text, schemaId || undefined, format),
     },
+    owl: {
+      ext: `.linkml.${format}`,
+      run: (text) =>
+        LinkML.fromOwl(
+          text,
+          withSchemaId(owlConfig, schemaId),
+          format,
+          listNotImported,
+          importMap,
+          inputFormat
+        ),
+    },
   };
+}
+
+// The OWL importer takes the schema id from its config rather than as an
+// argument, so `schema-id` is written into the config, replacing any
+// `schema_id` already there (as the CLI's --schema-id does). The config is
+// YAML or JSON text; JSON is merged as an object, YAML gets the line replaced
+// or appended (a JSON string is a valid YAML scalar).
+function withSchemaId(config, schemaId) {
+  if (!schemaId) return config || undefined;
+  if (!config.trim()) return JSON.stringify({ schema_id: schemaId });
+  if (config.trim().startsWith("{")) {
+    try {
+      return JSON.stringify({ ...JSON.parse(config), schema_id: schemaId });
+    } catch {
+      // Not JSON after all (a YAML flow mapping) – treat it as YAML.
+    }
+  }
+  const line = `schema_id: ${JSON.stringify(schemaId)}`;
+  return /^schema_id\s*:/m.test(config)
+    ? config.replace(/^schema_id\s*:.*$/m, line)
+    : `${config.replace(/\n?$/, "\n")}${line}\n`;
 }
 
 // Import-map key for a file: its path relative to the base directory, in POSIX
@@ -338,8 +444,9 @@ function writeAt(dest, contents) {
 }
 
 // Output name for an input document: its basename without the extension. The
-// importer also takes JSON input, so that extension is stripped too.
-const baseName = (file) => path.basename(file).replace(/\.(ya?ml|json)$/i, "");
+// importers also take JSON and RDF input, so those extensions are stripped too.
+const baseName = (file) =>
+  path.basename(file).replace(/\.(ya?ml|json|ttl|nt)$/i, "");
 
 function writeSingle(outDir, file, contents, ext) {
   writeAt(path.join(outDir, baseName(file) + ext), contents);
@@ -495,10 +602,15 @@ function main() {
     problems = runValidate(files, importMap(), baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
-    const format = resolveFormat(genName, getInput("format").toLowerCase());
+    const format = resolveFormat(
+      GENERATOR_FORMATS,
+      genName,
+      getInput("format").toLowerCase()
+    );
     if (format === null) return;
-    const modeInput = getInput("pruning-mode", "skip").toLowerCase() || "skip";
-    if (!Object.hasOwn(PRUNING_MODES, modeInput)) {
+    // Blank leaves the choice to the generator, whose defaults differ.
+    const modeInput = getInput("pruning-mode").toLowerCase();
+    if (modeInput && !Object.hasOwn(PRUNING_MODES, modeInput)) {
       fail(
         `Unknown pruning-mode '${modeInput}'. Expected one of: ${Object.values(
           PRUNING_MODES
@@ -506,14 +618,25 @@ function main() {
       );
       return;
     }
-    const pruningMode = PRUNING_MODES[modeInput];
+    const metadataProfile = resolveChoice("metadata-profile");
+    const permissibleValues = resolveChoice("permissible-values");
+    const target = resolveChoice("target");
+    if ([metadataProfile, permissibleValues, target].includes(null)) return;
     const generators = buildGenerators({
       open: getBool("open"),
       packageName: getInput("package", "linkml"),
       format,
-      pruningMode,
-      treeRoot: getInput("tree-root"),
+      pruningMode: modeInput ? PRUNING_MODES[modeInput] : undefined,
+      treeRoot: getInput("tree-root") || undefined,
       skipClassesWithoutIdentifier: getBool("skip-classes-without-identifier"),
+      onlyRootSchema: getBool("only-root-schema"),
+      metadataProfile,
+      permissibleValues,
+      skipDerivation: getBool("skip-derivation"),
+      includeNull: getBool("include-null"),
+      optionalMarker: getBool("optional-marker", true),
+      target,
+      derivedAttributes: getBool("derived-attributes"),
     });
     const gen = generators[genName];
     if (!gen) {
@@ -536,10 +659,39 @@ function main() {
     );
   } else if (command === "import") {
     const impName = getInput("importer").toLowerCase();
-    const format = resolveFormat(impName, getInput("format").toLowerCase());
+    const format = resolveFormat(
+      IMPORTER_FORMATS,
+      impName,
+      getInput("format").toLowerCase()
+    );
     if (format === null) return;
+    const inputFormat = resolveChoice("input-format");
+    if (inputFormat === null) return;
     const schemaId = getInput("schema-id");
-    const importers = buildImporters({ schemaId, format });
+    const configPath = getInput("config")
+      ? path.resolve(baseDir, getInput("config"))
+      : "";
+    if (configPath && !fs.existsSync(configPath)) {
+      fail(`config file not found: ${path.relative(process.cwd(), configPath)}`);
+      return;
+    }
+    const owl = impName === "owl";
+    const importers = buildImporters({
+      schemaId,
+      format,
+      owlConfig: owl && configPath ? fs.readFileSync(configPath, "utf8") : "",
+      listNotImported: getBool("list-not-imported"),
+      // The config maps `owl:imports` to LinkML imports, which are relative to
+      // where the schema is written – so key the schemas from there.
+      importMap: owl
+        ? buildImportMap(
+            outputDir() || baseDir,
+            [],
+            getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
+          )
+        : {},
+      inputFormat,
+    });
     const imp = importers[impName];
     if (!imp) {
       fail(

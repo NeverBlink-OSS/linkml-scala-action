@@ -5,7 +5,6 @@ prefixes:
 imports:
   - linkml:types
   - common/shared   # relative path, resolved against this file's directory
-tree_root: Employee
 classes:
   Employee:
     tree_root: true

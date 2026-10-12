@@ -1,0 +1,3 @@
+schema_id: https://example.org/from-config
+naming:
+  slots: upper_snake

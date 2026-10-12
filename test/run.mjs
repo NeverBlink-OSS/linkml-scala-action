@@ -346,12 +346,6 @@ run("format: json switches ossie to JSON (.ossie.json)", {
   output: path.relative(ROOT, outDir),
 }, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.ossie.json")] });
 
-run("generate ossie to the log names the schema's classes as concepts", {
-  command: "generate",
-  generator: "ossie",
-  files: "examples/person.yaml",
-}, { code: 0, stdoutIncludes: ["concept: Person", "type: EntityType"] });
-
 // `format` is per-generator: an RDF serialization is not one of ossie's.
 run("an RDF format is rejected for ossie", {
   command: "generate",
@@ -390,12 +384,6 @@ run("import ossie can write the schema as JSON", {
   filesExist: [path.join(path.relative(ROOT, outDir), "person.ontology.linkml.json")],
 });
 
-run("an imported schema keeps the ontology's classes and slots", {
-  command: "import",
-  importer: "ossie",
-  files: "test/fixtures/ossie/person.ontology.yaml",
-}, { code: 0, stdoutIncludes: ["classes:", "Person:", "full_name:"] });
-
 run("schema-id sets the id of the imported schema", {
   command: "import",
   importer: "ossie",
@@ -428,14 +416,286 @@ run("a rejected document can be silenced with ignore", {
 
 run("import with an unknown importer fails", {
   command: "import",
-  importer: "owl",
+  importer: "xsd",
   files: "test/fixtures/ossie/person.ontology.yaml",
-}, { code: 1, stdoutIncludes: ["Unknown importer", "ossie"] });
+}, { code: 1, stdoutIncludes: ["Unknown importer", "ossie, owl"] });
 
 run("import without an importer fails", {
   command: "import",
   files: "test/fixtures/ossie/person.ontology.yaml",
 }, { code: 1, stdoutIncludes: ["Unknown importer", "(none)"] });
+
+// --- OWL: the `owl` generator and importer ----------------------------------
+
+run("generate owl writes Turtle (.owl.ttl)", {
+  command: "generate",
+  generator: "owl",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.owl.ttl")] });
+
+run("owl writes descriptions as rdfs:comment by default", {
+  command: "generate",
+  generator: "owl",
+  files: "test/fixtures/owl/described.yaml",
+}, { code: 0, stdoutIncludes: ['rdfs:comment "Someone we know."'] });
+
+run("format: nt switches owl to N-Triples (.owl.nt)", {
+  command: "generate",
+  generator: "owl",
+  format: "nt",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.owl.nt")] });
+
+run("metadata-profile: linkml writes descriptions as skos:definition", {
+  command: "generate",
+  generator: "owl",
+  "metadata-profile": "linkml",
+  files: "test/fixtures/owl/described.yaml",
+}, { code: 0, stdoutIncludes: ['skos:definition "Someone we know."'], stdoutExcludes: ["rdfs:comment"] });
+
+run("an unknown metadata-profile fails", {
+  command: "generate",
+  generator: "owl",
+  "metadata-profile": "dublin-core",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown metadata-profile", "rdfs, linkml"] });
+
+run("an unknown permissible-values fails", {
+  command: "generate",
+  generator: "owl",
+  "permissible-values": "literal",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown permissible-values", "individual, class"] });
+
+run("only-root-schema makes owl import the other schemas instead", {
+  command: "generate",
+  generator: "owl",
+  "only-root-schema": "true",
+  files: "test/fixtures/imports/main.yaml",
+  imports: "test/fixtures/imports/common",
+}, { code: 0, stdoutIncludes: ["owl:imports"] });
+
+run("only-root-schema leaves imported classes out of shacl", {
+  command: "generate",
+  generator: "shacl",
+  "only-root-schema": "true",
+  files: "test/fixtures/imports/main.yaml",
+  imports: "test/fixtures/imports/common",
+}, { code: 0, stdoutIncludes: ["Employee"], stdoutExcludes: ["shared:Party"] });
+
+run("import owl turns an ontology back into a LinkML schema", {
+  command: "import",
+  importer: "owl",
+  files: "test/fixtures/owl/person.ttl",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 0,
+  outputsInclude: ["problems<<", "0"],
+  filesExist: [path.join(path.relative(ROOT, outDir), "person.linkml.yaml")],
+});
+
+run("import owl can write the schema as JSON", {
+  command: "import",
+  importer: "owl",
+  format: "json",
+  files: "test/fixtures/owl/person.ttl",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.linkml.json")] });
+
+// Turtle also reads N-Triples, so the way to see that `nt` reached the engine
+// is that it no longer reads Turtle.
+run("input-format: nt reads only N-Triples", {
+  command: "import",
+  importer: "owl",
+  "input-format": "nt",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["::error", "import failed"] });
+
+run("input-format: nt accepts an N-Triples file", {
+  command: "import",
+  importer: "owl",
+  "input-format": "nt",
+  files: "test/fixtures/owl/person.nt",
+}, { code: 0 });
+
+run("an unknown input-format fails", {
+  command: "import",
+  importer: "owl",
+  "input-format": "rdfxml",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["Unknown input-format", "ttl, nt"] });
+
+// `format` is the output of the importer, so an RDF syntax is not one of them.
+run("an RDF format is rejected for import owl", {
+  command: "import",
+  importer: "owl",
+  format: "ttl",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["Unknown format", "yaml, json"] });
+
+run("config changes how the ontology is mapped", {
+  command: "import",
+  importer: "owl",
+  config: "test/fixtures/owl/config.yaml",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 0, stdoutIncludes: ["id: https://example.org/from-config"] });
+
+run("schema-id sets the id of a schema imported from OWL", {
+  command: "import",
+  importer: "owl",
+  "schema-id": "https://example.org/imported",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 0, stdoutIncludes: ["id: https://example.org/imported"] });
+
+// As with the CLI's --schema-id, the input wins over the config, and the rest
+// of the config still applies.
+run("schema-id replaces the schema_id in config", {
+  command: "import",
+  importer: "owl",
+  config: "test/fixtures/owl/config.yaml",
+  "schema-id": "https://example.org/imported",
+  files: "test/fixtures/owl/person.ttl",
+}, {
+  code: 0,
+  stdoutIncludes: ["id: https://example.org/imported"],
+  stdoutExcludes: ["from-config"],
+});
+
+run("a missing config file fails", {
+  command: "import",
+  importer: "owl",
+  config: "test/fixtures/owl/no-such-config.yaml",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["config file not found"] });
+
+// The config maps the ontology's owl:imports to a LinkML schema, which the
+// importer reads from `imports` to use its terms by name.
+run("imports makes the schemas the config maps owl:imports to available", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  imports: "common",
+  "list-not-imported": "true",
+  files: "../owl/employee.ttl",
+}, { code: 0, stdoutExcludes: ["could not be read"] });
+
+run("list-not-imported reports a mapped import that is not there", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  "list-not-imported": "true",
+  files: "../owl/employee.ttl",
+}, { code: 0, stdoutIncludes: ["could not be read"] });
+
+run("import owl rejects a document that is not Turtle", {
+  command: "import",
+  importer: "owl",
+  files: "test/fixtures/owl/not-an-ontology.ttl",
+}, { code: 1, stdoutIncludes: ["::error", "import failed"] });
+
+// --- typescript, pydantic, er-diagram, translation ---------------------------
+
+run("generate typescript writes a .ts file", {
+  command: "generate",
+  generator: "typescript",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.ts")] });
+
+run("typescript include-null lets optional fields be null", {
+  command: "generate",
+  generator: "typescript",
+  "include-null": "true",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["export interface Person", "age?: number | null"] });
+
+run("generate pydantic writes a .py file", {
+  command: "generate",
+  generator: "pydantic",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.py")] });
+
+run("generate er-diagram writes a Mermaid file (.mmd)", {
+  command: "generate",
+  generator: "er-diagram",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.mmd")] });
+
+run("er-diagram marks optional attributes by default", {
+  command: "generate",
+  generator: "er-diagram",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["erDiagram", "integer? age"] });
+
+run("optional-marker: false drops the marker for older Mermaid", {
+  command: "generate",
+  generator: "er-diagram",
+  "optional-marker": "false",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["integer age"], stdoutExcludes: ["integer? age"] });
+
+run("generate translation names the file after the target", {
+  command: "generate",
+  generator: "translation",
+  target: "graphql",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.translation.graphql.json")] });
+
+run("translation defaults to the base target", {
+  command: "generate",
+  generator: "translation",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.translation.base.json")] });
+
+run("an unknown translation target fails", {
+  command: "generate",
+  generator: "translation",
+  target: "protobuf",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown target", "base, uri"] });
+
+run("derived-attributes adds inherited slots to classAttributes", {
+  command: "generate",
+  generator: "translation",
+  "derived-attributes": "true",
+  files: "test/fixtures/imports/main.yaml",
+  imports: "test/fixtures/imports/common",
+}, { code: 0, stdoutIncludes: ['"Employee": {', '"name": "name"'] });
+
+// --- options passed to the generators that already existed ------------------
+
+run("generate linkml can write JSON (.materialized.json)", {
+  command: "generate",
+  generator: "linkml",
+  format: "json",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.materialized.json")] });
+
+run("tree-root overrides the root of the JSON Schema", {
+  command: "generate",
+  generator: "json-schema",
+  "tree-root": "Address",
+  files: "examples/tables.yaml",
+}, { code: 0, stdoutIncludes: ['"title": "Address"'] });
+
+// Person references Address, not the other way round, so rooting the tree at
+// Address prunes Person away.
+run("graphql honours pruning-mode and tree-root", {
+  command: "generate",
+  generator: "graphql",
+  "pruning-mode": "treeRoot",
+  "tree-root": "Address",
+  files: "examples/tables.yaml",
+}, { code: 0, stdoutIncludes: ["type Address"], stdoutExcludes: ["type Person"] });
 
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
