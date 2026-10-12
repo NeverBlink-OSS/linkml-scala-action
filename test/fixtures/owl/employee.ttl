@@ -1,0 +1,45 @@
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX main: <https://example.org/main/>
+PREFIX linkml: <https://w3id.org/linkml/>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+PREFIX vann: <http://purl.org/vocab/vann/>
+
+<https://example.org/main> a owl:Ontology ;
+  owl:imports <https://example.org/shared> ;
+  vann:preferredNamespacePrefix "main" ;
+  vann:preferredNamespaceUri "https://example.org/main/"^^xsd:anyURI ;
+  sh:declare [
+    sh:prefix "main" ;
+    sh:namespace "https://example.org/main/"^^xsd:anyURI
+  ] , [
+    sh:prefix "linkml" ;
+    sh:namespace "https://w3id.org/linkml/"^^xsd:anyURI
+  ] .
+
+main:Employee a owl:Class ;
+  rdfs:subClassOf <https://example.org/shared/Party> , [
+    a owl:Restriction ;
+    owl:onProperty main:title ;
+    owl:allValuesFrom xsd:string
+  ] , [
+    a owl:Restriction ;
+    owl:onProperty main:title ;
+    owl:maxCardinality "1"^^xsd:nonNegativeInteger
+  ] .
+
+main:title a owl:DatatypeProperty ;
+  rdfs:range xsd:string ;
+  a owl:FunctionalProperty .
+
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+
+sh:declare a owl:AnnotationProperty .
+
+sh:prefix a owl:AnnotationProperty .
+
+sh:namespace a owl:AnnotationProperty .

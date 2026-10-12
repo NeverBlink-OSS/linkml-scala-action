@@ -2,6 +2,19 @@
 
 Notes for breaking changes and new features in releases from v0.15.0 on. Earlier releases are described on the [Releases page](https://github.com/NeverBlink-OSS/linkml-scala-action/releases).
 
+## v0.17.0
+
+Bundles [`@neverblink/linkml@0.17.0`](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v0.17.0).
+
+### Added
+
+- `generator: owl` – generate an OWL 2 ontology. Takes `format` (`ttl`/`nt`), `only-root-schema`, `metadata-profile` and `permissible-values`.
+- `importer: owl` – read an OWL ontology or RDFS vocabulary into a LinkML schema. Takes `config` (a mapping config file), `schema-id`, `input-format`, `list-not-imported`, `format`, and `imports` for the schemas the config maps `owl:imports` to.
+- `generator: typescript` and `generator: pydantic` – TypeScript types and pydantic classes for the JSON the JSON Schema describes. Take `pruning-mode`, `tree-root`, `open` and `include-null`.
+- `generator: er-diagram` – a Mermaid ER diagram. Takes `pruning-mode`, `tree-root` and `optional-marker`.
+- `generator: translation` – JSON dictionaries from LinkML names to a framework's names. Takes `target` and `derived-attributes`.
+- More options for the existing generators: `tree-root` for `json-schema`; `pruning-mode`, `tree-root`, `skip-derivation` and `format` (`yaml`/`json`) for `linkml`; `pruning-mode` and `tree-root` for `graphql`; `only-root-schema` for `shacl` and `rdfs`.
+
 ## v0.16.1
 
 ### Added

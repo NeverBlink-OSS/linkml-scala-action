@@ -171031,14 +171031,46 @@ function fail(message) {
   annotate("error", message);
   process.exitCode = 1;
 }
-var FORMATS = {
+var GENERATOR_FORMATS = {
   shacl: ["ttl", "nt"],
   rdfs: ["ttl", "nt"],
+  owl: ["ttl", "nt"],
+  linkml: ["yaml", "json"],
   ossie: ["yaml", "json"]
 };
+var IMPORTER_FORMATS = {
+  ossie: ["yaml", "json"],
+  owl: ["yaml", "json"]
+};
 var PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
-function resolveFormat(name, input) {
-  const allowed = FORMATS[name];
+var CHOICES = {
+  "metadata-profile": ["rdfs", "linkml"],
+  "permissible-values": ["individual", "class"],
+  target: [
+    "base",
+    "uri",
+    "scala",
+    "graphql",
+    "frictionless",
+    "ossie",
+    "erdiagram",
+    "json",
+    "typescript",
+    "pydantic"
+  ],
+  "input-format": ["ttl", "nt"]
+};
+function resolveChoice(name) {
+  const allowed = CHOICES[name];
+  const value = getInput(name).toLowerCase() || allowed[0];
+  if (!allowed.includes(value)) {
+    fail(`Unknown ${name} '${value}'. Expected one of: ${allowed.join(", ")}.`);
+    return null;
+  }
+  return value;
+}
+function resolveFormat(formats, name, input) {
+  const allowed = formats[name];
   if (!allowed) return "";
   const format = input || allowed[0];
   if (!allowed.includes(format)) {
@@ -171055,41 +171087,66 @@ function buildGenerators({
   format,
   pruningMode,
   treeRoot,
-  skipClassesWithoutIdentifier
+  skipClassesWithoutIdentifier,
+  onlyRootSchema,
+  metadataProfile,
+  permissibleValues,
+  skipDerivation,
+  includeNull,
+  optionalMarker,
+  target,
+  derivedAttributes
 }) {
   return {
     "json-schema": {
       ext: ".schema.json",
-      run: (v) => $e_LinkML.jsonSchema(v, open)
+      run: (v) => $e_LinkML.jsonSchema(v, open, treeRoot)
     },
     shacl: {
       ext: `.shacl.${format}`,
-      run: (v) => $e_LinkML.shacl(v, open, false, format)
+      run: (v) => $e_LinkML.shacl(v, open, onlyRootSchema, format)
     },
     rdfs: {
       ext: `.rdfs.${format}`,
-      run: (v) => $e_LinkML.rdfs(v, false, format)
+      run: (v) => $e_LinkML.rdfs(v, onlyRootSchema, format)
+    },
+    owl: {
+      ext: `.owl.${format}`,
+      run: (v) => $e_LinkML.owl(v, onlyRootSchema, metadataProfile, permissibleValues, format)
     },
     linkml: {
-      ext: ".materialized.yaml",
-      run: (v) => $e_LinkML.linkml(v)
+      ext: `.materialized.${format}`,
+      run: (v) => $e_LinkML.linkml(v, pruningMode, skipDerivation, treeRoot, format)
     },
     frictionless: {
       multi: true,
-      run: (v) => $e_LinkML.frictionless(
-        v,
-        pruningMode,
-        treeRoot || void 0,
-        skipClassesWithoutIdentifier
-      )
+      run: (v) => $e_LinkML.frictionless(v, pruningMode, treeRoot, skipClassesWithoutIdentifier)
     },
     graphql: {
       ext: ".graphql",
-      run: (v) => $e_LinkML.graphQl(v)
+      run: (v) => $e_LinkML.graphQl(v, pruningMode, treeRoot)
+    },
+    typescript: {
+      ext: ".ts",
+      run: (v) => $e_LinkML.typeScript(v, pruningMode, treeRoot, includeNull, open)
+    },
+    pydantic: {
+      ext: ".py",
+      run: (v) => $e_LinkML.pydantic(v, pruningMode, treeRoot, includeNull, open)
+    },
+    "er-diagram": {
+      ext: ".mmd",
+      run: (v) => $e_LinkML.erDiagram(v, pruningMode, treeRoot, optionalMarker)
+    },
+    // The target is part of the name, so several targets can share an output
+    // directory.
+    translation: {
+      ext: `.translation.${target}.json`,
+      run: (v) => $e_LinkML.translation(v, target, derivedAttributes)
     },
     ossie: {
       ext: `.ossie.${format}`,
-      run: (v) => $e_LinkML.ossie(v, pruningMode, treeRoot || void 0, format)
+      run: (v) => $e_LinkML.ossie(v, pruningMode, treeRoot, format)
     },
     scala: {
       multi: true,
@@ -171097,13 +171154,44 @@ function buildGenerators({
     }
   };
 }
-function buildImporters({ schemaId, format }) {
+function buildImporters({
+  schemaId,
+  format,
+  owlConfig,
+  listNotImported,
+  importMap,
+  inputFormat
+}) {
   return {
     ossie: {
       ext: `.linkml.${format}`,
       run: (text) => $e_LinkML.fromOssie(text, schemaId || void 0, format)
+    },
+    owl: {
+      ext: `.linkml.${format}`,
+      run: (text) => $e_LinkML.fromOwl(
+        text,
+        withSchemaId(owlConfig, schemaId),
+        format,
+        listNotImported,
+        importMap,
+        inputFormat
+      )
     }
   };
+}
+function withSchemaId(config, schemaId) {
+  if (!schemaId) return config || void 0;
+  if (!config.trim()) return JSON.stringify({ schema_id: schemaId });
+  if (config.trim().startsWith("{")) {
+    try {
+      return JSON.stringify({ ...JSON.parse(config), schema_id: schemaId });
+    } catch {
+    }
+  }
+  const line = `schema_id: ${JSON.stringify(schemaId)}`;
+  return /^schema_id\s*:/m.test(config) ? config.replace(/^schema_id\s*:.*$/m, line) : `${config.replace(/\n?$/, "\n")}${line}
+`;
 }
 var keyFor = (baseDir, file) => path2.relative(baseDir, file).split(path2.sep).join("/");
 function collectYaml(dir) {
@@ -171218,7 +171306,7 @@ function writeAt(dest, contents) {
   fs2.writeFileSync(dest, contents);
   info(`  \u2192 ${path2.relative(process.cwd(), dest)}`);
 }
-var baseName = (file) => path2.basename(file).replace(/\.(ya?ml|json)$/i, "");
+var baseName = (file) => path2.basename(file).replace(/\.(ya?ml|json|ttl|nt)$/i, "");
 function writeSingle(outDir, file, contents, ext) {
   writeAt(path2.join(outDir, baseName(file) + ext), contents);
 }
@@ -171340,10 +171428,14 @@ function main() {
     problems = runValidate(files, importMap(), baseDir, strict, ignore);
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
-    const format = resolveFormat(genName, getInput("format").toLowerCase());
+    const format = resolveFormat(
+      GENERATOR_FORMATS,
+      genName,
+      getInput("format").toLowerCase()
+    );
     if (format === null) return;
-    const modeInput = getInput("pruning-mode", "skip").toLowerCase() || "skip";
-    if (!Object.hasOwn(PRUNING_MODES, modeInput)) {
+    const modeInput = getInput("pruning-mode").toLowerCase();
+    if (modeInput && !Object.hasOwn(PRUNING_MODES, modeInput)) {
       fail(
         `Unknown pruning-mode '${modeInput}'. Expected one of: ${Object.values(
           PRUNING_MODES
@@ -171351,14 +171443,25 @@ function main() {
       );
       return;
     }
-    const pruningMode = PRUNING_MODES[modeInput];
+    const metadataProfile = resolveChoice("metadata-profile");
+    const permissibleValues = resolveChoice("permissible-values");
+    const target = resolveChoice("target");
+    if ([metadataProfile, permissibleValues, target].includes(null)) return;
     const generators = buildGenerators({
       open: getBool("open"),
       packageName: getInput("package", "linkml"),
       format,
-      pruningMode,
-      treeRoot: getInput("tree-root"),
-      skipClassesWithoutIdentifier: getBool("skip-classes-without-identifier")
+      pruningMode: modeInput ? PRUNING_MODES[modeInput] : void 0,
+      treeRoot: getInput("tree-root") || void 0,
+      skipClassesWithoutIdentifier: getBool("skip-classes-without-identifier"),
+      onlyRootSchema: getBool("only-root-schema"),
+      metadataProfile,
+      permissibleValues,
+      skipDerivation: getBool("skip-derivation"),
+      includeNull: getBool("include-null"),
+      optionalMarker: getBool("optional-marker", true),
+      target,
+      derivedAttributes: getBool("derived-attributes")
     });
     const gen = generators[genName];
     if (!gen) {
@@ -171381,10 +171484,35 @@ function main() {
     );
   } else if (command === "import") {
     const impName = getInput("importer").toLowerCase();
-    const format = resolveFormat(impName, getInput("format").toLowerCase());
+    const format = resolveFormat(
+      IMPORTER_FORMATS,
+      impName,
+      getInput("format").toLowerCase()
+    );
     if (format === null) return;
+    const inputFormat = resolveChoice("input-format");
+    if (inputFormat === null) return;
     const schemaId = getInput("schema-id");
-    const importers = buildImporters({ schemaId, format });
+    const configPath = getInput("config") ? path2.resolve(baseDir, getInput("config")) : "";
+    if (configPath && !fs2.existsSync(configPath)) {
+      fail(`config file not found: ${path2.relative(process.cwd(), configPath)}`);
+      return;
+    }
+    const owl = impName === "owl";
+    const importers = buildImporters({
+      schemaId,
+      format,
+      owlConfig: owl && configPath ? fs2.readFileSync(configPath, "utf8") : "",
+      listNotImported: getBool("list-not-imported"),
+      // The config maps `owl:imports` to LinkML imports, which are relative to
+      // where the schema is written – so key the schemas from there.
+      importMap: owl ? buildImportMap(
+        outputDir() || baseDir,
+        [],
+        getInput("imports") ? path2.resolve(baseDir, getInput("imports")) : ""
+      ) : {},
+      inputFormat
+    });
     const imp = importers[impName];
     if (!imp) {
       fail(
