@@ -319,7 +319,7 @@ run("an unresolvable import is reported as a fatal problem", {
   files: "test/fixtures/errors/missing-import.yaml",
 }, {
   code: 1,
-  stdoutIncludes: ["::error", "Cannot import schema", "Could not read from import map"],
+  stdoutIncludes: ["::error", "Cannot import schema", "Could not read from the imports"],
 });
 
 run("generate on an unresolvable import fails without output", {

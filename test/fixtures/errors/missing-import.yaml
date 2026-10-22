@@ -1,6 +1,6 @@
 # Imports a schema that is not in the import map. Since linkml-scala 0.12 this
 # is a FATAL issue in the report rather than a thrown exception, and the reason
-# ("Could not read from import map") only appears in the issue's `details`.
+# ("Could not read from the imports") only appears in the issue's `details`.
 id: https://example.org/missing-import
 name: missing-import
 prefixes:
