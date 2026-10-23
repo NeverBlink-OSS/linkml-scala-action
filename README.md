@@ -90,9 +90,10 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed between releases.
 | `input-format`      | `ttl`      | **import owl:** RDF syntax of the ontology – `ttl` (Turtle, which also reads N-Triples) or `nt` (N-Triples). |
 | `list-not-imported` | `false`    | **import owl:** list what could not be imported (property chains, individuals, …) in comments at the top of the schema. |
 | `imports`           | –          | Directory of extra `.yaml` schemas. **validate/generate:** made available to `imports:` (keyed by path, relative to `working-directory`). **import owl:** the LinkML schemas that `config` maps `owl:imports` to (keyed by path, relative to `output`). |
+| `import-map`        | –          | **validate/generate:** path to a JSON [import map](https://github.com/NeverBlink-OSS/linkml-scala/blob/main/docs/import_maps.md) (the format of linkml-scala's `--import-map`) that says where to load imports from, without changing the schema. Local locations are relative to `working-directory` and are read from disk. |
 | `ignore`            | –          | Newline-separated issue type names to silence, one per line. |
 | `annotations`       | `true`     | Emit GitHub error/warning annotations. |
-| `working-directory` | `.`        | Base directory for resolving `files`, `imports`, `config`, and `output`. |
+| `working-directory` | `.`        | Base directory for resolving `files`, `imports`, `import-map`, `config`, and `output`. |
 
 ## Outputs
 
@@ -144,6 +145,25 @@ Loading a schema validates it, so `validate` and `generate` report the same prob
           imports: "schemas"                # dir holding schemas/common/types.yaml
           output: build/shacl
 ```
+
+## Import maps – example
+
+A schema that imports another one by URI or CURIE, such as `units:core` with the prefix `units: https://example.org/units/`, can be loaded from a local copy with an import map:
+
+```json
+{
+  "https://example.org/units/": "deps/units/"
+}
+```
+
+```yaml
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+        with:
+          files: "schemas/model.yaml"
+          import-map: "imports.json"        # units:core → deps/units/core.yaml
+```
+
+A key ending in `/` or `#` matches every import that starts with it; any other key matches only that import. Keys are full URIs or paths, not CURIEs. See [linkml-scala's import map docs](https://github.com/NeverBlink-OSS/linkml-scala/blob/main/docs/import_maps.md) for how imports are matched.
 
 ## Versioning
 

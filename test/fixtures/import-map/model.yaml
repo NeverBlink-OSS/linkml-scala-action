@@ -1,0 +1,17 @@
+id: https://example.org/model
+name: model
+prefixes:
+  linkml: https://w3id.org/linkml/
+  units: https://example.org/units/
+default_range: string
+imports:
+  - linkml:types
+  - units:core   # found only through an import map
+classes:
+  Measurement:
+    tree_root: true
+    attributes:
+      value:
+        range: float
+      unit:
+        range: Unit

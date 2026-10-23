@@ -274,7 +274,10 @@ function collectYaml(dir) {
 // then loaded via loadFromPath(key, pool), which resolves imports through this
 // map and stays correct even when the root takes part in an import cycle.
 // ---------------------------------------------------------------------------
-function buildImportMap(baseDir, files, importsDir) {
+// `extraPaths` are the local locations of the `import-map` (absolute paths):
+// a directory adds every schema under it, a file adds that file. A location
+// that doesn't exist is skipped, and the engine reports the import it was for.
+function buildImportMap(baseDir, files, importsDir, extraPaths = []) {
   const pool = {};
   for (const f of files) pool[keyFor(baseDir, f)] = fs.readFileSync(f, "utf8");
   if (importsDir) {
@@ -286,7 +289,81 @@ function buildImportMap(baseDir, files, importsDir) {
       }
     }
   }
+  for (const p of extraPaths) {
+    if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+      for (const f of collectYaml(p)) {
+        pool[keyFor(baseDir, f)] = fs.readFileSync(f, "utf8");
+      }
+      continue;
+    }
+    // The engine ignores a `.yaml`/`.yml` extension, so a location may leave
+    // it out.
+    const f = [p, `${p}.yaml`, `${p}.yml`].find(
+      (c) => fs.existsSync(c) && fs.statSync(c).isFile()
+    );
+    if (f) pool[keyFor(baseDir, f)] = fs.readFileSync(f, "utf8");
+  }
   return pool;
+}
+
+// A location with a URI scheme (`https://…`, `urn:…`). A Windows drive letter
+// (`C:\…`) is a single letter followed by a colon, so it stays a local path.
+const isUri = (s) => /^[a-z][a-z0-9+.-]+:/i.test(s);
+
+// ---------------------------------------------------------------------------
+// Read the `import-map` input: a JSON file in the format of linkml-scala's
+// `--import-map` (and LinkML-Python's `--importmap`), from an import to the
+// location to load it from. The JS loader looks locations up in the pool, so
+// each local location is turned into a pool key (relative to `baseDir`, as the
+// CLI takes them relative to the current directory), and returned in `paths`
+// so it can be read into the pool. Returns undefined when the input is blank,
+// and null (after failing the run) when the file is missing or malformed.
+// Checking the entries themselves (CURIE keys, conflicting entries) is left to
+// the engine, which reports a bad one on every schema it loads.
+// ---------------------------------------------------------------------------
+function readImportMap(baseDir) {
+  const input = getInput("import-map");
+  if (!input) return undefined;
+  const file = path.resolve(baseDir, input);
+  const rel = path.relative(process.cwd(), file);
+  if (!fs.existsSync(file)) {
+    fail(`import-map file not found: ${rel}`);
+    return null;
+  }
+  let entries;
+  try {
+    entries = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    fail(`import-map ${rel} is not valid JSON: ${errMessage(e)}`);
+    return null;
+  }
+  if (
+    !entries ||
+    typeof entries !== "object" ||
+    Array.isArray(entries) ||
+    !Object.values(entries).every((v) => typeof v === "string")
+  ) {
+    fail(
+      `import-map ${rel} must be a JSON object from an import to the location ` +
+        'to load it from, e.g. {"https://example.org/units/": "deps/units/"}.'
+    );
+    return null;
+  }
+  const map = {};
+  const paths = [];
+  for (const [key, loc] of Object.entries(entries)) {
+    if (isUri(loc)) {
+      map[key] = loc;
+      continue;
+    }
+    const abs = path.resolve(baseDir, loc);
+    paths.push(abs);
+    // A prefix location keeps its trailing separator, so the rest of the
+    // import is appended to it as a path.
+    const trailing = /[/\\]$/.test(loc) ? "/" : "";
+    map[key] = keyFor(baseDir, abs) + trailing;
+  }
+  return { map, paths };
 }
 
 // Extract the human-readable message from a thrown Scala.js error.
@@ -383,9 +460,14 @@ const isIgnored = (issue, ignore) =>
 // surface it as a synthetic fatal issue, which keeps it annotated, counted and
 // silenceable like any other problem.
 // ---------------------------------------------------------------------------
-function loadSchema(file, pool, baseDir) {
+function loadSchema(file, pool, baseDir, importMap) {
   try {
-    const { view, report } = LinkML.loadFromPath(keyFor(baseDir, file), pool);
+    const { view, report } = LinkML.loadFromPath(
+      keyFor(baseDir, file),
+      pool,
+      true,
+      importMap
+    );
     return { view, issues: report?.issues ?? [] };
   } catch (e) {
     return {
@@ -420,11 +502,11 @@ function reportIssues(issues, rel, strict, ignore) {
 }
 
 // ---------------------------------------------------------------------------
-function runValidate(files, pool, baseDir, strict, ignore) {
+function runValidate(files, pool, baseDir, importMap, strict, ignore) {
   let problems = 0;
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
-    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { view, issues } = loadSchema(file, pool, baseDir, importMap);
     const { kept, failed } = reportIssues(issues, rel, strict, ignore);
 
     problems += kept;
@@ -452,12 +534,22 @@ function writeSingle(outDir, file, contents, ext) {
   writeAt(path.join(outDir, baseName(file) + ext), contents);
 }
 
-function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
+function runGenerate(
+  files,
+  pool,
+  baseDir,
+  importMap,
+  gen,
+  genName,
+  outDir,
+  strict,
+  ignore
+) {
   let problems = 0;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
-    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { view, issues } = loadSchema(file, pool, baseDir, importMap);
     const { kept, failed } = reportIssues(issues, rel, strict, ignore);
 
     problems += kept;
@@ -585,11 +677,14 @@ function main() {
   }
 
   // Only validate/generate load schemas; an import reads its inputs as text.
-  const importMap = () =>
+  // `importMap` is the parsed `import-map` input, whose local locations are
+  // read into the pool along with the inputs and the `imports` directory.
+  const pool = (importMap) =>
     buildImportMap(
       baseDir,
       files,
-      getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
+      getInput("imports") ? path.resolve(baseDir, getInput("imports")) : "",
+      importMap?.paths
     );
   const outputDir = () =>
     getInput("output") ? path.resolve(baseDir, getInput("output")) : "";
@@ -599,7 +694,16 @@ function main() {
 
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, importMap(), baseDir, strict, ignore);
+    const importMap = readImportMap(baseDir);
+    if (importMap === null) return;
+    problems = runValidate(
+      files,
+      pool(importMap),
+      baseDir,
+      importMap?.map,
+      strict,
+      ignore
+    );
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
     const format = resolveFormat(
@@ -647,10 +751,13 @@ function main() {
       );
       return;
     }
+    const importMap = readImportMap(baseDir);
+    if (importMap === null) return;
     problems = runGenerate(
       files,
-      importMap(),
+      pool(importMap),
       baseDir,
+      importMap?.map,
       gen,
       genName,
       outputDir(),

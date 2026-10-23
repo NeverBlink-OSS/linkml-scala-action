@@ -697,6 +697,68 @@ run("graphql honours pruning-mode and tree-root", {
   files: "examples/tables.yaml",
 }, { code: 0, stdoutIncludes: ["type Address"], stdoutExcludes: ["type Person"] });
 
+// --- import-map: where to load an import from, as in --import-map -----------
+
+// model.yaml imports `units:core`, which only an import map can find.
+const IMPORT_MAP = "test/fixtures/import-map";
+
+run("an import with no import map entry cannot be resolved", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+}, { code: 1, stdoutIncludes: ["::error", "Could not read from the imports"] });
+
+run("import-map with a prefix entry resolves a CURIE import", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "prefix.json",
+}, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map/model.yaml"], stdoutExcludes: ["::error"] });
+
+run("import-map with an exact entry resolves a CURIE import", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "exact.json",
+}, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map/model.yaml"], stdoutExcludes: ["::error"] });
+
+run("generate uses the import map too", {
+  command: "generate",
+  generator: "json-schema",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "prefix.json",
+  output: outDir,
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "model.schema.json")] });
+
+run("a missing import-map file fails", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "nope.json",
+}, { code: 1, stdoutIncludes: ["import-map file not found"] });
+
+run("an import-map that isn't JSON fails", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "broken.json",
+}, { code: 1, stdoutIncludes: ["is not valid JSON"] });
+
+run("an import-map whose locations aren't strings fails", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "not-strings.json",
+}, { code: 1, stdoutIncludes: ["must be a JSON object from an import"] });
+
+run("an import-map with a CURIE key is rejected by the engine", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP,
+  "import-map": "curie-key.json",
+}, { code: 1, stdoutIncludes: ["::error", "is a CURIE"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);
