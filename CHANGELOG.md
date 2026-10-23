@@ -2,6 +2,12 @@
 
 Notes for breaking changes and new features in releases from v0.15.0 on. Earlier releases are described on the [Releases page](https://github.com/NeverBlink-OSS/linkml-scala-action/releases).
 
+## Unreleased
+
+### Added
+
+- `import-map` input for `validate` and `generate` – a JSON import map, as taken by linkml-scala's `--import-map`, that says where to load imports from without changing the schema. Local locations are relative to `working-directory` and are read from disk.
+
 ## v0.17.0
 
 Bundles [`@neverblink/linkml@0.17.0`](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v0.17.0).

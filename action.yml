@@ -105,6 +105,10 @@ inputs:
     description: "Optional directory of extra .yaml schemas. validate/generate: made available to `imports:` (keyed by path relative to working-directory). import owl: the LinkML schemas that `config` maps owl:imports to (keyed by path relative to `output`, where the schema is written)."
     required: false
     default: ""
+  import-map:
+    description: "validate/generate only: path to a JSON import map, in the format of linkml-scala's --import-map and LinkML-Python's --importmap, that says where to load imports from without changing the schema, e.g. {\"https://example.org/units/\": \"deps/units/\"}. Local locations are relative to working-directory and are read from disk. See linkml-scala's docs/import_maps.md."
+    required: false
+    default: ""
   ignore:
     description: "Newline-separated list of issue type names (a problem's `issue_type`, shown in square brackets when it is reported), e.g. NoTreeRootClass or UnknownReference. A matching problem is not annotated, not counted, and has no effect on the exit code. Still logged for auditability."
     required: false
@@ -114,7 +118,7 @@ inputs:
     required: false
     default: "true"
   working-directory:
-    description: "Base directory for resolving `files`, `imports`, `config` and `output`."
+    description: "Base directory for resolving `files`, `imports`, `import-map`, `config` and `output`."
     required: false
     default: "."
 

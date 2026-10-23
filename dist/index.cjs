@@ -167305,7 +167305,7 @@ function collectYaml(dir) {
   }
   return out;
 }
-function buildImportMap(baseDir, files, importsDir) {
+function buildImportMap(baseDir, files, importsDir, extraPaths = []) {
   const pool = {};
   for (const f of files) pool[keyFor(baseDir, f)] = fs2.readFileSync(f, "utf8");
   if (importsDir) {
@@ -167317,7 +167317,56 @@ function buildImportMap(baseDir, files, importsDir) {
       }
     }
   }
+  for (const p of extraPaths) {
+    if (fs2.existsSync(p) && fs2.statSync(p).isDirectory()) {
+      for (const f2 of collectYaml(p)) {
+        pool[keyFor(baseDir, f2)] = fs2.readFileSync(f2, "utf8");
+      }
+      continue;
+    }
+    const f = [p, `${p}.yaml`, `${p}.yml`].find(
+      (c) => fs2.existsSync(c) && fs2.statSync(c).isFile()
+    );
+    if (f) pool[keyFor(baseDir, f)] = fs2.readFileSync(f, "utf8");
+  }
   return pool;
+}
+var isUri = (s) => /^[a-z][a-z0-9+.-]+:/i.test(s);
+function readImportMap(baseDir) {
+  const input = getInput("import-map");
+  if (!input) return void 0;
+  const file = path2.resolve(baseDir, input);
+  const rel = path2.relative(process.cwd(), file);
+  if (!fs2.existsSync(file)) {
+    fail(`import-map file not found: ${rel}`);
+    return null;
+  }
+  let entries;
+  try {
+    entries = JSON.parse(fs2.readFileSync(file, "utf8"));
+  } catch (e) {
+    fail(`import-map ${rel} is not valid JSON: ${errMessage(e)}`);
+    return null;
+  }
+  if (!entries || typeof entries !== "object" || Array.isArray(entries) || !Object.values(entries).every((v) => typeof v === "string")) {
+    fail(
+      `import-map ${rel} must be a JSON object from an import to the location to load it from, e.g. {"https://example.org/units/": "deps/units/"}.`
+    );
+    return null;
+  }
+  const map = {};
+  const paths = [];
+  for (const [key, loc] of Object.entries(entries)) {
+    if (isUri(loc)) {
+      map[key] = loc;
+      continue;
+    }
+    const abs = path2.resolve(baseDir, loc);
+    paths.push(abs);
+    const trailing = /[/\\]$/.test(loc) ? "/" : "";
+    map[key] = keyFor(baseDir, abs) + trailing;
+  }
+  return { map, paths };
 }
 var errMessage = (e) => (e && e.message ? String(e.message) : String(e)).replace(
   /^java\.lang\.\w+(?:Exception)?:\s*/,
@@ -167357,9 +167406,14 @@ function parseIgnore() {
   return entries.map((e) => e.toLowerCase());
 }
 var isIgnored = (issue, ignore) => ignore.includes(String(issue.issue_type ?? "").toLowerCase());
-function loadSchema(file, pool, baseDir) {
+function loadSchema(file, pool, baseDir, importMap) {
   try {
-    const { view, report } = $e_LinkML.loadFromPath(keyFor(baseDir, file), pool);
+    const { view, report } = $e_LinkML.loadFromPath(
+      keyFor(baseDir, file),
+      pool,
+      true,
+      importMap
+    );
     return { view, issues: report?.issues ?? [] };
   } catch (e) {
     return {
@@ -167389,11 +167443,11 @@ function reportIssues(issues, rel, strict, ignore) {
   }
   return { kept, failed };
 }
-function runValidate(files, pool, baseDir, strict, ignore) {
+function runValidate(files, pool, baseDir, importMap, strict, ignore) {
   let problems = 0;
   for (const file of files) {
     const rel = path2.relative(process.cwd(), file);
-    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { view, issues } = loadSchema(file, pool, baseDir, importMap);
     const { kept, failed } = reportIssues(issues, rel, strict, ignore);
     problems += kept;
     if (failed) process.exitCode = 1;
@@ -167412,12 +167466,12 @@ var baseName = (file) => path2.basename(file).replace(/\.(ya?ml|json|ttl|nt)$/i,
 function writeSingle(outDir, file, contents, ext) {
   writeAt(path2.join(outDir, baseName(file) + ext), contents);
 }
-function runGenerate(files, pool, baseDir, gen, genName, outDir, strict, ignore) {
+function runGenerate(files, pool, baseDir, importMap, gen, genName, outDir, strict, ignore) {
   let problems = 0;
   if (outDir) fs2.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
     const rel = path2.relative(process.cwd(), file);
-    const { view, issues } = loadSchema(file, pool, baseDir);
+    const { view, issues } = loadSchema(file, pool, baseDir, importMap);
     const { kept, failed } = reportIssues(issues, rel, strict, ignore);
     problems += kept;
     if (failed) process.exitCode = 1;
@@ -167516,10 +167570,11 @@ function main() {
     fail(`No schema files matched: ${filesSpec}`);
     return;
   }
-  const importMap = () => buildImportMap(
+  const pool = (importMap) => buildImportMap(
     baseDir,
     files,
-    getInput("imports") ? path2.resolve(baseDir, getInput("imports")) : ""
+    getInput("imports") ? path2.resolve(baseDir, getInput("imports")) : "",
+    importMap?.paths
   );
   const outputDir = () => getInput("output") ? path2.resolve(baseDir, getInput("output")) : "";
   const ignore = parseIgnore();
@@ -167527,7 +167582,16 @@ function main() {
   const strict = getBool("strict");
   let problems = 0;
   if (command === "validate") {
-    problems = runValidate(files, importMap(), baseDir, strict, ignore);
+    const importMap = readImportMap(baseDir);
+    if (importMap === null) return;
+    problems = runValidate(
+      files,
+      pool(importMap),
+      baseDir,
+      importMap?.map,
+      strict,
+      ignore
+    );
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
     const format = resolveFormat(
@@ -167574,10 +167638,13 @@ function main() {
       );
       return;
     }
+    const importMap = readImportMap(baseDir);
+    if (importMap === null) return;
     problems = runGenerate(
       files,
-      importMap(),
+      pool(importMap),
       baseDir,
+      importMap?.map,
       gen,
       genName,
       outputDir(),
