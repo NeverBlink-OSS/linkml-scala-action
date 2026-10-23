@@ -4,7 +4,7 @@ Notes for breaking changes and new features in releases from v0.15.0 on. Earlier
 
 ## v0.17.1
 
-Bundles [`@neverblink/linkml@0.17.0`](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v0.17.1).
+Bundles [`@neverblink/linkml@0.17.1`](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v0.17.1).
 
 ### Added
 
