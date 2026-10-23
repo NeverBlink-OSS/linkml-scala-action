@@ -359,9 +359,10 @@ function readImportMap(baseDir) {
     const abs = path.resolve(baseDir, loc);
     paths.push(abs);
     // A prefix location keeps its trailing separator, so the rest of the
-    // import is appended to it as a path.
-    const trailing = /[/\\]$/.test(loc) ? "/" : "";
-    map[key] = keyFor(baseDir, abs) + trailing;
+    // import is appended to it as a path. Working-directory itself has the
+    // empty key, which gets no separator: `/` would make the rest absolute.
+    const rel = keyFor(baseDir, abs);
+    map[key] = rel && /[/\\]$/.test(loc) ? rel + "/" : rel;
   }
   return { map, paths };
 }
