@@ -167363,8 +167363,8 @@ function readImportMap(baseDir) {
     }
     const abs = path2.resolve(baseDir, loc);
     paths.push(abs);
-    const trailing = /[/\\]$/.test(loc) ? "/" : "";
-    map[key] = keyFor(baseDir, abs) + trailing;
+    const rel2 = keyFor(baseDir, abs);
+    map[key] = rel2 && /[/\\]$/.test(loc) ? rel2 + "/" : rel2;
   }
   return { map, paths };
 }

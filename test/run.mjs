@@ -759,6 +759,24 @@ run("an import-map with a CURIE key is rejected by the engine", {
   "import-map": "curie-key.json",
 }, { code: 1, stdoutIncludes: ["::error", "is a CURIE"] });
 
+// A prefix entry whose location is working-directory itself: `./` and an empty
+// location both load `units:core` from core.yaml next to model.yaml.
+const IMPORT_MAP_HERE = "test/fixtures/import-map-here";
+
+run("import-map with a './' prefix location loads from working-directory", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP_HERE,
+  "import-map": "dot-slash.json",
+}, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map-here/model.yaml"], stdoutExcludes: ["::error"] });
+
+run("import-map with an empty prefix location loads from working-directory", {
+  command: "validate",
+  files: "model.yaml",
+  "working-directory": IMPORT_MAP_HERE,
+  "import-map": "empty.json",
+}, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map-here/model.yaml"], stdoutExcludes: ["::error"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);
