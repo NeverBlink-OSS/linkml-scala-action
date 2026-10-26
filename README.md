@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           files: "schemas/**/*.yaml"
 ```
@@ -27,7 +27,7 @@ jobs:
 Generate JSON Schema and commit/upload it as an artifact:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           command: generate
           generator: json-schema
@@ -42,7 +42,7 @@ Generate JSON Schema and commit/upload it as an artifact:
 Fail the build on warnings too:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           files: "schemas/**/*.yaml"
           strict: true
@@ -51,7 +51,7 @@ Fail the build on warnings too:
 Turn an [Apache Ossie](https://github.com/apache/ossie) ontology into a LinkML schema:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           command: import
           importer: ossie
@@ -137,7 +137,7 @@ Loading a schema validates it, so `validate` and `generate` report the same prob
 ## Resolving imports – example
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           command: generate
           generator: shacl
@@ -157,7 +157,7 @@ A schema that imports another one by URI or CURIE, such as `units:core` with the
 ```
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
         with:
           files: "schemas/model.yaml"
           import-map: "imports.json"        # units:core → deps/units/core.yaml
@@ -170,7 +170,7 @@ A key ending in `/` or `#` matches every import that starts with it; any other k
 The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version. Pin an exact tag:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.1
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
 ```
 
 New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, updates the examples above, and – only if that passes – cuts the matching `vX.Y.Z` release. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).
