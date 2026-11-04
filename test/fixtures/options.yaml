@@ -1,0 +1,31 @@
+# Uses the schema features that some generator options act on: `ifabsent`
+# (optional-defaults), `emit_prefixes` (generate-emit-prefixes) and text in two
+# languages (metadata-language).
+id: https://example.org/options
+name: options
+description:
+  en: Settings of a widget.
+  de: Einstellungen eines Widgets.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ex: https://example.org/
+default_prefix: ex
+default_range: string
+emit_prefixes:
+  - ex
+imports:
+  - linkml:types
+classes:
+  Settings:
+    tree_root: true
+    description:
+      en: Settings of a widget.
+      de: Einstellungen eines Widgets.
+    attributes:
+      retries:
+        description:
+          en: How often to try again.
+          de: Wie oft es erneut versucht wird.
+        range: integer
+        required: true
+        ifabsent: int(3)

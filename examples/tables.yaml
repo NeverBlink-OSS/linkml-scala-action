@@ -3,6 +3,7 @@
 id: https://example.org/tables
 name: tables
 title: Tables schema
+description: People and their addresses, as tables.
 prefixes:
   linkml: https://w3id.org/linkml/
   ex: https://example.org/
@@ -13,16 +14,22 @@ imports:
 classes:
   Person:
     tree_root: true
+    description: A person, with an identifier.
     attributes:
       id:
+        description: Identifier of the person.
         identifier: true
         range: string
       full_name:
+        description: The person's name, in full.
         required: true
         range: string
       address:
+        description: Where the person lives.
         range: Address
   Address:
+    description: A postal address, with no identifier.
     attributes:
       city:
+        description: Name of the city.
         range: string
