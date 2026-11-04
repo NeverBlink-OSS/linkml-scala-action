@@ -18,7 +18,7 @@ inputs:
     required: false
     default: "false"
   generator:
-    description: "generate only: json-schema | shacl | rdfs | owl | linkml | frictionless | graphql | typescript | pydantic | er-diagram | translation | ossie | scala."
+    description: "generate only: json-schema | shacl | rdfs | owl | linkml | frictionless | graphql | typescript | pydantic | er-diagram | translation | docs | stats | ossie | scala."
     required: false
     default: ""
   importer:
@@ -41,12 +41,24 @@ inputs:
     description: "generate scala only: target package name."
     required: false
     default: "linkml"
+  error-handling:
+    description: "generate scala/typescript only: how the generated code reports the `errors` of the schema's functions. For scala: 'annotation' (the default) or 'either'. For typescript: 'exception' (the default) or 'result'."
+    required: false
+    default: ""
+  generate-emit-prefixes:
+    description: "generate scala only: generate a `Prefixes` object with the schema's emit_prefixes."
+    required: false
+    default: "true"
+  skip-leaf-interfaces:
+    description: "generate scala only: a concrete class that no other class extends becomes one case class, instead of an interface and an `...Impl` case class. Turn it off when other code has to extend the generated classes."
+    required: false
+    default: "true"
   pruning-mode:
-    description: "generate linkml/frictionless/graphql/typescript/pydantic/er-diagram/ossie only: which elements to keep. 'treeRoot' = only those reachable from the tree_root class, 'schema' = only those reachable from a class defined in the root schema, 'skip' = all of them. If empty, each generator uses its own default: 'treeRoot' for linkml, graphql and er-diagram, 'skip' for the others."
+    description: "generate linkml/frictionless/graphql/typescript/pydantic/er-diagram/docs/stats/ossie only: which elements to keep. 'tree_root' = only those reachable from the tree_root class, 'schema' = only those reachable from a class defined in the root schema, 'skip' = all of them. 'treeRoot', the spelling before v0.18.0, is still accepted. If empty, each generator uses its own default: 'schema' for graphql, er-diagram, docs and stats, 'skip' for the others."
     required: false
     default: ""
   tree-root:
-    description: "generate json-schema/linkml/frictionless/graphql/typescript/pydantic/er-diagram/ossie only: tree root class name to use instead of the schema's own tree_root. For linkml, frictionless and ossie it only has an effect with pruning-mode: treeRoot."
+    description: "generate json-schema/linkml/frictionless/graphql/typescript/pydantic/er-diagram/docs/stats/ossie only: tree root class name to use instead of the schema's own tree_root. For json-schema it sets the class at the root of the JSON Schema; for the others it only has an effect with pruning-mode: tree_root."
     required: false
     default: ""
   skip-classes-without-identifier:
@@ -70,7 +82,31 @@ inputs:
     required: false
     default: "false"
   include-null:
-    description: "generate typescript/pydantic only: optional slots may also be null (typescript), or dumps keep the nulls that were loaded or set (pydantic)."
+    description: "generate json-schema/typescript/pydantic only: optional values may also be null (json-schema, typescript), or dumps keep the nulls that were loaded or set (pydantic)."
+    required: false
+    default: "false"
+  tree-root-inline-type:
+    description: "generate json-schema only: how the tree root class appears at the root of the JSON Schema, instead of its tree_root_as extension. One of plain, optional, list, compact_dict, simple_dict."
+    required: false
+    default: ""
+  indentation-step:
+    description: "generate json-schema/translation only: number of spaces for each level of indentation. Defaults to 2."
+    required: false
+    default: ""
+  optional-defaults:
+    description: "generate typescript only: a slot with an `ifabsent` may be left out, for data that a program fills the defaults in. Without it, such a slot is as required as the schema says."
+    required: false
+    default: "false"
+  metadata-language:
+    description: "generate json-schema/frictionless/graphql/typescript/pydantic/docs/ossie/scala only: the language of titles and descriptions in the output, for schemas with text in more than one language. Defaults to 'en'."
+    required: false
+    default: ""
+  full-uris:
+    description: "generate linkml and import only: write URIs in full, instead of compacting them to CURIEs with the schema's prefixes."
+    required: false
+    default: "false"
+  single-file:
+    description: "generate docs only: write all pages as sections of one docs.md, instead of one file per page."
     required: false
     default: "false"
   optional-marker:
@@ -78,7 +114,7 @@ inputs:
     required: false
     default: "true"
   target:
-    description: "generate translation only: the framework to translate LinkML names to. One of base (the default), uri, scala, graphql, frictionless, ossie, erdiagram, json, typescript, pydantic."
+    description: "generate translation only: the framework to translate LinkML names to. One of base (the default), uri, scala, graphql, frictionless, ossie, erdiagram, json, typescript, pydantic, docs."
     required: false
     default: ""
   derived-attributes:
@@ -86,11 +122,11 @@ inputs:
     required: false
     default: "false"
   schema-id:
-    description: "import only: the `id` of the LinkML schema to produce. Defaults to a placeholder built from the source document's name (ossie) or to the ontology IRI (owl). Only valid when a single file is imported. For owl, it replaces any schema_id in `config`."
+    description: "import only: the `id` of the LinkML schema to produce. Defaults to a placeholder built from the source document's name (ossie) or to the ontology IRI (owl). Only valid when a single file is imported. For owl, it takes precedence over the schema_id in `config`."
     required: false
     default: ""
   config:
-    description: "import owl only: path to a YAML or JSON file that changes how the ontology is mapped – names, prefixes, which annotation properties fill which metaslots, which owl:imports map to which LinkML schemas. See linkml-scala's docs/owl.md."
+    description: "import owl only: path to a YAML or JSON file that changes how the ontology is mapped – names, prefixes, which annotation properties fill which metaslots, which owl:imports map to which LinkML schemas. See https://linkml.ohi.dev/docs/importers/owl/."
     required: false
     default: ""
   input-format:
@@ -98,7 +134,7 @@ inputs:
     required: false
     default: ""
   list-not-imported:
-    description: "import owl only: list what could not be imported in comments at the top of the schema."
+    description: "import only: report what could not be imported (property chains, individuals, unmapped owl:imports, …) as warnings, with the issue type NotImported. Like schema warnings, they fail the run only with `strict`."
     required: false
     default: "false"
   imports:
@@ -106,7 +142,7 @@ inputs:
     required: false
     default: ""
   import-map:
-    description: "validate/generate only: path to a JSON import map, in the format of linkml-scala's --import-map and LinkML-Python's --importmap, that says where to load imports from without changing the schema, e.g. {\"https://example.org/units/\": \"deps/units/\"}. Local locations are relative to working-directory and are read from disk. See linkml-scala's docs/import_maps.md."
+    description: "validate/generate only: path to a JSON import map, in the format of linkml-scala's --import-map and LinkML-Python's --importmap, that says where to load imports from without changing the schema, e.g. {\"https://example.org/units/\": \"deps/units/\"}. Local locations are relative to working-directory and are read from disk. See https://linkml.ohi.dev/docs/import-maps/."
     required: false
     default: ""
   ignore:

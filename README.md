@@ -1,6 +1,6 @@
 # linkml-scala-action
 
-A GitHub Action to **validate**, **generate from** and **import into** [LinkML](https://linkml.io) schemas in CI, powered by [linkml-scala](https://github.com/NeverBlink-OSS/linkml-scala).
+A GitHub Action to **validate**, **generate from** and **import into** [LinkML](https://linkml.io) schemas in CI, powered by [ohi LinkML](https://linkml.ohi.dev) (formerly linkml-scala).
 
 - 🚀 **Pure Node.js** – no Docker, no JVM, no Python, no binary download. Uses the [`@neverblink/linkml`](https://www.npmjs.com/package/@neverblink/linkml) npm package.
 - 🖥️ **Runs everywhere** – Linux, macOS, and Windows runners.
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           files: "schemas/**/*.yaml"
 ```
@@ -27,7 +27,7 @@ jobs:
 Generate JSON Schema and commit/upload it as an artifact:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           command: generate
           generator: json-schema
@@ -42,7 +42,7 @@ Generate JSON Schema and commit/upload it as an artifact:
 Fail the build on warnings too:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           files: "schemas/**/*.yaml"
           strict: true
@@ -51,7 +51,7 @@ Fail the build on warnings too:
 Turn an [Apache Ossie](https://github.com/apache/ossie) ontology into a LinkML schema:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           command: import
           importer: ossie
@@ -68,29 +68,38 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed between releases.
 | `command`           | `validate` | `validate`, `generate`, or `import`. |
 | `files`             | *required* | Files to process – LinkML schemas, or the documents to read for `import`. Space/newline-separated; globs incl. `**` supported. |
 | `strict`            | `false`    | Treat warnings as failures. Errors always fail; warnings only with this on. |
-| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `owl`, `linkml`, `frictionless`, `graphql`, `typescript`, `pydantic`, `er-diagram`, `translation`, `ossie`, or `scala`. |
+| `generator`         | –          | **generate:** `json-schema`, `shacl`, `rdfs`, `owl`, `linkml`, `frictionless`, `graphql`, `typescript`, `pydantic`, `er-diagram`, `translation`, `docs`, `stats`, `ossie`, or `scala`. See [the generator docs](https://linkml.ohi.dev/docs/generators/) for what each one writes. |
 | `importer`          | –          | **import:** the format to read and turn into a LinkML schema – `ossie` (an [Apache Ossie](https://github.com/apache/ossie) ontology) or `owl` (an OWL ontology or RDFS vocabulary in Turtle or N-Triples). |
 | `output`            | –          | **generate/import:** output directory (one file per input). If omitted, output is printed to the job log. |
 | `format`            | see desc.  | Output serialization. **generate shacl/rdfs/owl:** `ttl` (Turtle, prefixed and pretty-printed, the default) or `nt` (N-Triples). **generate linkml/ossie, import:** `yaml` (the default) or `json`. Other generators take no format. |
 | `open`              | `false`    | **generate json-schema/shacl/typescript/pydantic:** allow additional properties (open shapes) for every class, not only those whose `extra_slots` allows them. |
-| `pruning-mode`      | see desc.  | **generate linkml/frictionless/graphql/typescript/pydantic/er-diagram/ossie:** which elements to keep – `treeRoot` (only those reachable from the `tree_root` class), `schema` (only those reachable from a class defined in the root schema), or `skip` (all of them). If omitted, each generator uses its own default: `treeRoot` for `linkml`, `graphql` and `er-diagram`, `skip` for the others. |
-| `tree-root`         | –          | **generate json-schema/linkml/frictionless/graphql/typescript/pydantic/er-diagram/ossie:** tree root class name to use instead of the schema's own `tree_root`. For `linkml`, `frictionless` and `ossie` it only has an effect with `pruning-mode: treeRoot`. |
+| `pruning-mode`      | see desc.  | **generate linkml/frictionless/graphql/typescript/pydantic/er-diagram/docs/stats/ossie:** which elements to keep – `tree_root` (only those reachable from the `tree_root` class), `schema` (only those reachable from a class defined in the root schema), or `skip` (all of them). `treeRoot`, the spelling before v0.18.0, is still accepted. If omitted, each generator uses its own default: `schema` for `graphql`, `er-diagram`, `docs` and `stats`, `skip` for the others. |
+| `tree-root`         | –          | **generate json-schema/linkml/frictionless/graphql/typescript/pydantic/er-diagram/docs/stats/ossie:** tree root class name to use instead of the schema's own `tree_root`. For `json-schema` it sets the class at the root of the JSON Schema; for the others it only has an effect with `pruning-mode: tree_root`. |
 | `only-root-schema`  | `false`    | **generate shacl/rdfs/owl:** describe only the classes of the root schema, not those of the schemas it imports. For `owl`, each imported schema gets an `owl:imports` instead. |
 | `metadata-profile`  | `rdfs`     | **generate owl:** where descriptions go – `rdfs` (`rdfs:comment`) or `linkml` (`skos:definition`, as in the LinkML metamodel). |
 | `permissible-values` | `individual` | **generate owl:** what permissible values become – `individual` or `class`. |
 | `skip-derivation`   | `false`    | **generate linkml:** copy classes as they are instead of deriving them. |
-| `include-null`      | `false`    | **generate typescript:** optional slots may also be `null`. **generate pydantic:** dumps keep the nulls that were loaded or set. |
+| `include-null`      | `false`    | **generate json-schema/typescript:** optional values may also be `null`. **generate pydantic:** dumps keep the nulls that were loaded or set. |
+| `tree-root-inline-type` | –      | **generate json-schema:** how the tree root class appears at the root of the JSON Schema, instead of its `tree_root_as` extension – `plain`, `optional`, `list`, `compact_dict`, or `simple_dict`. |
+| `indentation-step`  | `2`        | **generate json-schema/translation:** number of spaces for each level of indentation. |
+| `optional-defaults` | `false`    | **generate typescript:** a slot with an `ifabsent` may be left out, for data that a program fills the defaults in. |
+| `metadata-language` | `en`       | **generate json-schema/frictionless/graphql/typescript/pydantic/docs/ossie/scala:** the language of titles and descriptions in the output, for schemas with text in more than one language. |
+| `full-uris`         | `false`    | **generate linkml, import:** write URIs in full, instead of compacting them to CURIEs. |
+| `single-file`       | `false`    | **generate docs:** write all pages as sections of one `docs.md`, instead of one file per page. |
 | `optional-marker`   | `true`     | **generate er-diagram:** mark optional attributes with a trailing `?` on their type. Mermaid understands this from version 11.16; turn it off for older renderers, which throw an error on it. |
-| `target`            | `base`     | **generate translation:** the framework to translate LinkML names to – `base`, `uri`, `scala`, `graphql`, `frictionless`, `ossie`, `erdiagram`, `json`, `typescript`, or `pydantic`. |
+| `target`            | `base`     | **generate translation:** the framework to translate LinkML names to – `base`, `uri`, `scala`, `graphql`, `frictionless`, `ossie`, `erdiagram`, `json`, `typescript`, `pydantic`, or `docs`. |
 | `derived-attributes` | `false`   | **generate translation:** also list inherited slots, mixin slots and slots from the class's `slots` list in `classAttributes`. |
 | `package`           | `linkml`   | **generate scala:** target package name. |
+| `error-handling`    | see desc.  | How the generated code reports the `errors` of the schema's functions. **generate scala:** `annotation` (the default) or `either`. **generate typescript:** `exception` (the default) or `result`. |
+| `generate-emit-prefixes` | `true` | **generate scala:** generate a `Prefixes` object with the schema's `emit_prefixes`. |
+| `skip-leaf-interfaces` | `true`  | **generate scala:** a concrete class that no other class extends becomes one case class, instead of an interface and an `...Impl` case class. Turn it off when other code has to extend the generated classes. |
 | `skip-classes-without-identifier` | `false` | **generate frictionless:** skip classes with no identifier slot. Such a table gets no primary key and nothing can reference it. |
-| `schema-id`         | –          | **import:** the `id` of the LinkML schema to produce. Defaults to a placeholder built from the document's name (`ossie`) or to the ontology IRI (`owl`). Only valid when a single file is imported. For `owl`, it replaces any `schema_id` in `config`. |
-| `config`            | –          | **import owl:** path to a YAML or JSON file that changes how the ontology is mapped – names, prefixes, which annotation properties fill which metaslots, which `owl:imports` map to which LinkML schemas. See [linkml-scala's OWL docs](https://github.com/NeverBlink-OSS/linkml-scala/blob/main/docs/owl.md#config). |
+| `schema-id`         | –          | **import:** the `id` of the LinkML schema to produce. Defaults to a placeholder built from the document's name (`ossie`) or to the ontology IRI (`owl`). Only valid when a single file is imported. For `owl`, it takes precedence over the `schema_id` in `config`. |
+| `config`            | –          | **import owl:** path to a YAML or JSON file that changes how the ontology is mapped – names, prefixes, which annotation properties fill which metaslots, which `owl:imports` map to which LinkML schemas. See the [OWL importer docs](https://linkml.ohi.dev/docs/importers/owl/). |
 | `input-format`      | `ttl`      | **import owl:** RDF syntax of the ontology – `ttl` (Turtle, which also reads N-Triples) or `nt` (N-Triples). |
-| `list-not-imported` | `false`    | **import owl:** list what could not be imported (property chains, individuals, …) in comments at the top of the schema. |
+| `list-not-imported` | `false`    | **import:** report what could not be imported (property chains, individuals, unmapped `owl:imports`, …) as warnings, with the issue type `NotImported`. Like schema warnings, they fail the run only with `strict`. |
 | `imports`           | –          | Directory of extra `.yaml` schemas. **validate/generate:** made available to `imports:` (keyed by path, relative to `working-directory`). **import owl:** the LinkML schemas that `config` maps `owl:imports` to (keyed by path, relative to `output`). |
-| `import-map`        | –          | **validate/generate:** path to a JSON [import map](https://github.com/NeverBlink-OSS/linkml-scala/blob/main/docs/import_maps.md) (the format of linkml-scala's `--import-map`) that says where to load imports from, without changing the schema. Local locations are relative to `working-directory` and are read from disk. |
+| `import-map`        | –          | **validate/generate:** path to a JSON [import map](https://linkml.ohi.dev/docs/import-maps/) (the format of the CLI's `--import-map`) that says where to load imports from, without changing the schema. Local locations are relative to `working-directory` and are read from disk. |
 | `ignore`            | –          | Newline-separated issue type names to silence, one per line. |
 | `annotations`       | `true`     | Emit GitHub error/warning annotations. |
 | `working-directory` | `.`        | Base directory for resolving `files`, `imports`, `import-map`, `config`, and `output`. |
@@ -111,7 +120,9 @@ Loading a schema validates it, so `validate` and `generate` report the same prob
 |-----------|---------|--------|
 | `FATAL`   | The schema could not be loaded at all (unparseable YAML, an unresolvable import, an unknown class reference). | Fails the step. Nothing is generated from the schema. |
 | `ERROR`   | The schema loaded but is invalid (e.g. two `tree_root` classes, a non-unique name). | Fails the step. Generation still runs, so the output is there to inspect. |
-| `WARNING` | Advisory (e.g. no `tree_root` class). | Reported only; fails the step when `strict: true`. |
+| `WARNING` | Advisory (e.g. no `tree_root` class, or an element without a `description`). | Reported only; fails the step when `strict: true`. |
+
+From v0.18.0, every schema, class and slot without a `description` gets a `MissingRecommendedSlot` warning. If your schemas aren't documented yet and you use `strict: true`, add `ignore: MissingRecommendedSlot` until they are.
 
 - **Generators** write one output file per input schema into `output`, named after the schema (`person.yaml` → `person.schema.json`):
 
@@ -127,6 +138,8 @@ Loading a schema validates it, so `validate` and `generate` report the same prob
   | `pydantic`    | `person.py` |
   | `er-diagram`  | `person.mmd` (a Mermaid ER diagram) |
   | `translation` | `person.translation.<target>.json` |
+  | `stats`       | `person.stats.json` |
+  | `docs`        | `person/index.md` plus a page per element, such as `person/classes/<class>.md`, or only `person/docs.md` with `single-file` |
   | `ossie`       | `person.ossie.yaml` (or `.json`) |
   | `scala`       | `person/*.scala` |
   | `frictionless` | `person/datapackage.json` plus one `person/schemas/<table>.json` per table |
@@ -137,7 +150,7 @@ Loading a schema validates it, so `validate` and `generate` report the same prob
 ## Resolving imports – example
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           command: generate
           generator: shacl
@@ -157,20 +170,20 @@ A schema that imports another one by URI or CURIE, such as `units:core` with the
 ```
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
         with:
           files: "schemas/model.yaml"
           import-map: "imports.json"        # units:core → deps/units/core.yaml
 ```
 
-A key ending in `/` or `#` matches every import that starts with it; any other key matches only that import. Keys are full URIs or paths, not CURIEs. See [linkml-scala's import map docs](https://github.com/NeverBlink-OSS/linkml-scala/blob/main/docs/import_maps.md) for how imports are matched.
+A key ending in `/` or `#` matches every import that starts with it; any other key matches only that import. Keys are full URIs or paths, not CURIEs. See the [import map docs](https://linkml.ohi.dev/docs/import-maps/) for how imports are matched.
 
 ## Versioning
 
 The linkml-scala engine version is bundled into each release of this action, so the action version tracks the engine version. Pin an exact tag:
 
 ```yaml
-      - uses: NeverBlink-OSS/linkml-scala-action@v0.17.2
+      - uses: NeverBlink-OSS/linkml-scala-action@v0.18.0
 ```
 
 New engine releases are picked up automatically by the [`track-linkml-scala`](.github/workflows/track-linkml-scala.yml) workflow, which bumps the bundled engine, rebuilds, re-runs the test suite against it, updates the examples above, and – only if that passes – cuts the matching `vX.Y.Z` release. It runs daily and can also be triggered manually (with an optional target version and a dry-run mode).

@@ -1,5 +1,6 @@
 id: https://example.org/model
 name: model
+description: Measurements, with units from another schema.
 prefixes:
   linkml: https://w3id.org/linkml/
   units: https://example.org/units/
@@ -10,8 +11,11 @@ imports:
 classes:
   Measurement:
     tree_root: true
+    description: A value and its unit.
     attributes:
       value:
+        description: The number.
         range: float
       unit:
+        description: The unit of the number.
         range: Unit

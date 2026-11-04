@@ -2,7 +2,23 @@
 
 Notes for breaking changes and new features in releases from v0.15.0 on. Earlier releases are described on the [Releases page](https://github.com/NeverBlink-OSS/linkml-scala-action/releases).
 
-## Unreleased
+## v0.18.0
+
+Bundles [`@neverblink/linkml@0.18.0`](https://github.com/NeverBlink-OSS/ohi/releases/tag/v0.18.0). linkml-scala is now called [ohi LinkML](https://linkml.ohi.dev).
+
+### Breaking
+
+- Every schema, class and slot without a `description` now gets a `MissingRecommendedSlot` warning. This fails runs with `strict: true` on schemas that aren't documented yet; add `ignore: MissingRecommendedSlot` to keep them passing.
+- The default `pruning-mode` changed in the engine: `graphql` and `er-diagram` now keep everything reachable from the root schema (`schema`), and `linkml` keeps everything (`skip`). Both used to default to `treeRoot`. Set `pruning-mode: tree_root` for the old output.
+- `list-not-imported` reports what could not be imported as `NotImported` warnings (annotated, counted, and failing the run under `strict`) instead of comments at the top of the imported schema. It now works for `importer: ossie` too.
+
+### Added
+
+- `generator: docs` – Markdown documentation, a page per class, slot, enum and type under `output/<schema-name>/`. `single-file` writes it all to one `docs.md`.
+- `generator: stats` – statistics on the schema (counts of elements, descriptions, mappings and languages) as `<schema>.stats.json`.
+- `metadata-language` – the language of titles and descriptions, for schemas with text in more than one.
+- `include-null`, `tree-root-inline-type` and `indentation-step` for `json-schema`; `optional-defaults` and `error-handling` for `typescript`; `error-handling`, `generate-emit-prefixes` and `skip-leaf-interfaces` for `scala`; `full-uris` for `linkml` and both importers; `docs` as a translation `target`.
+- `pruning-mode` takes `tree_root`, the engine's new spelling. `treeRoot` still works.
 
 ### Fixed
 

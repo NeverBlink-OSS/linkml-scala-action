@@ -1,10 +1,11 @@
 import { LinkML } from "@neverblink/linkml";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.17.2";
+const LINKML_VERSION = "0.18.0";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -64,10 +65,23 @@ const IMPORTER_FORMATS = {
   ossie: ["yaml", "json"],
   owl: ["yaml", "json"],
 };
+// `error-handling` is per-generator too: the Scala and TypeScript generators
+// report a function's errors in different ways.
+const ERROR_HANDLING = {
+  scala: ["annotation", "either"],
+  typescript: ["exception", "result"],
+};
 // Keyed by the lowercased input, valued by the spelling linkml-scala expects.
-const PRUNING_MODES = { treeroot: "treeRoot", schema: "schema", skip: "skip" };
-// Inputs with a fixed set of values, default first. Unlike `format`, each one
-// means the same thing wherever it applies.
+// `treeRoot` is how linkml-scala spelled it before 0.18, so it is still taken.
+const PRUNING_MODES = {
+  tree_root: "tree_root",
+  "tree-root": "tree_root",
+  treeroot: "tree_root",
+  schema: "schema",
+  skip: "skip",
+};
+// Inputs with a fixed set of values. Unlike `format`, each one means the same
+// thing wherever it applies.
 const CHOICES = {
   "metadata-profile": ["rdfs", "linkml"],
   "permissible-values": ["individual", "class"],
@@ -82,15 +96,19 @@ const CHOICES = {
     "json",
     "typescript",
     "pydantic",
+    "docs",
   ],
   "input-format": ["ttl", "nt"],
+  "tree-root-inline-type": ["plain", "optional", "list", "compact_dict", "simple_dict"],
 };
 
-// Resolve one of the CHOICES inputs: its default when blank, and null (after
-// failing the run) when the value isn't one of the accepted ones.
+// Resolve one of the CHOICES inputs: undefined when blank, so the engine's own
+// default applies, and null (after failing the run) when the value isn't one
+// of the accepted ones.
 function resolveChoice(name) {
+  const value = getInput(name).toLowerCase();
+  if (!value) return undefined;
   const allowed = CHOICES[name];
-  const value = getInput(name).toLowerCase() || allowed[0];
   if (!allowed.includes(value)) {
     fail(`Unknown ${name} '${value}'. Expected one of: ${allowed.join(", ")}.`);
     return null;
@@ -98,100 +116,160 @@ function resolveChoice(name) {
   return value;
 }
 
-// Resolve `format` for the chosen generator/importer: its own default when the
-// input is blank, "" when it takes no format, and null (after failing the run)
-// when the value isn't one it accepts.
-function resolveFormat(formats, name, input) {
-  const allowed = formats[name];
+// Resolve a whole number input: undefined when blank, null (after failing the
+// run) when it isn't one.
+function resolveCount(name) {
+  const value = getInput(name);
+  if (!value) return undefined;
+  if (!/^\d+$/.test(value)) {
+    fail(`${name} must be a whole number, got '${value}'.`);
+    return null;
+  }
+  return Number(value);
+}
+
+// Resolve a per-generator (or per-importer) input such as `format`: the first
+// value in `table` when the input is blank, "" when the generator doesn't take
+// it, and null (after failing the run) when the value isn't one it accepts.
+function resolveFor(table, name, inputName) {
+  const allowed = table[name];
   if (!allowed) return "";
-  const format = input || allowed[0];
-  if (!allowed.includes(format)) {
+  const value = getInput(inputName).toLowerCase() || allowed[0];
+  if (!allowed.includes(value)) {
     fail(
-      `Unknown format '${format}' for '${name}'. Expected one of: ${allowed.join(", ")}.`
+      `Unknown ${inputName} '${value}' for '${name}'. Expected one of: ${allowed.join(", ")}.`
     );
     return null;
   }
-  return format;
+  return value;
 }
 
 // ---------------------------------------------------------------------------
 // Generator registry: how each generator turns a loaded SchemaView into output,
 // and where that output goes. `multi` returns a { filename: contents } map.
+// Each generator is a method of the view taking one options object. An option
+// left undefined gets the engine's default (they differ between generators);
+// the engine rejects keys it doesn't know, so each generator gets only its own.
 // ---------------------------------------------------------------------------
-// `pruningMode` and `treeRoot` are undefined when not set, so each generator
-// falls back to its own default (they differ between generators).
-function buildGenerators({
-  open,
-  packageName,
-  format,
-  pruningMode,
-  treeRoot,
-  skipClassesWithoutIdentifier,
-  onlyRootSchema,
-  metadataProfile,
-  permissibleValues,
-  skipDerivation,
-  includeNull,
-  optionalMarker,
-  target,
-  derivedAttributes,
-}) {
+function buildGenerators(o) {
+  const pruning = { pruning_mode: o.pruningMode, tree_root: o.treeRoot };
+  const lang = { metadata_language: o.metadataLanguage };
   return {
     "json-schema": {
       ext: ".schema.json",
-      run: (v) => LinkML.jsonSchema(v, open, treeRoot),
+      run: (v) =>
+        v.jsonSchema({
+          open: o.open,
+          tree_root: o.treeRoot,
+          include_null: o.includeNull,
+          tree_root_inline_type: o.treeRootInlineType,
+          indentation_step: o.indentationStep,
+          ...lang,
+        }),
     },
     shacl: {
-      ext: `.shacl.${format}`,
-      run: (v) => LinkML.shacl(v, open, onlyRootSchema, format),
+      ext: `.shacl.${o.format}`,
+      run: (v) =>
+        v.shacl({
+          open: o.open,
+          only_classes_from_root_schema: o.onlyRootSchema,
+          format: o.format,
+        }),
     },
     rdfs: {
-      ext: `.rdfs.${format}`,
-      run: (v) => LinkML.rdfs(v, onlyRootSchema, format),
+      ext: `.rdfs.${o.format}`,
+      run: (v) =>
+        v.rdfs({ only_classes_from_root_schema: o.onlyRootSchema, format: o.format }),
     },
     owl: {
-      ext: `.owl.${format}`,
+      ext: `.owl.${o.format}`,
       run: (v) =>
-        LinkML.owl(v, onlyRootSchema, metadataProfile, permissibleValues, format),
+        v.owl({
+          only_root_schema: o.onlyRootSchema,
+          metadata_profile: o.metadataProfile,
+          permissible_values: o.permissibleValues,
+          format: o.format,
+        }),
     },
     linkml: {
-      ext: `.materialized.${format}`,
-      run: (v) => LinkML.linkml(v, pruningMode, skipDerivation, treeRoot, format),
+      ext: `.materialized.${o.format}`,
+      run: (v) =>
+        v.linkml({
+          ...pruning,
+          skip_class_derivation: o.skipDerivation,
+          format: o.format,
+          full_uris: o.fullUris,
+        }),
     },
     frictionless: {
       multi: true,
       run: (v) =>
-        LinkML.frictionless(v, pruningMode, treeRoot, skipClassesWithoutIdentifier),
+        v.frictionless({
+          ...pruning,
+          skip_classes_without_identifier: o.skipClassesWithoutIdentifier,
+          ...lang,
+        }),
     },
     graphql: {
       ext: ".graphql",
-      run: (v) => LinkML.graphQl(v, pruningMode, treeRoot),
+      run: (v) => v.graphql({ ...pruning, ...lang }),
     },
     typescript: {
       ext: ".ts",
-      run: (v) => LinkML.typeScript(v, pruningMode, treeRoot, includeNull, open),
+      run: (v) =>
+        v.typescript({
+          ...pruning,
+          include_null: o.includeNull,
+          open: o.open,
+          optional_defaults: o.optionalDefaults,
+          error_handling: o.errorHandling,
+          ...lang,
+        }),
     },
     pydantic: {
       ext: ".py",
-      run: (v) => LinkML.pydantic(v, pruningMode, treeRoot, includeNull, open),
+      run: (v) =>
+        v.pydantic({ ...pruning, include_null: o.includeNull, open: o.open, ...lang }),
     },
     "er-diagram": {
       ext: ".mmd",
-      run: (v) => LinkML.erDiagram(v, pruningMode, treeRoot, optionalMarker),
+      run: (v) => v.erDiagram({ ...pruning, optional_marker: o.optionalMarker }),
     },
     // The target is part of the name, so several targets can share an output
     // directory.
     translation: {
-      ext: `.translation.${target}.json`,
-      run: (v) => LinkML.translation(v, target, derivedAttributes),
+      ext: `.translation.${o.target ?? "base"}.json`,
+      run: (v) =>
+        v.translation({
+          target: o.target,
+          derived_attributes: o.derivedAttributes,
+          indentation_step: o.indentationStep,
+        }),
+    },
+    // A page per element, or a single `docs.md` with `single-file`.
+    docs: {
+      multi: true,
+      run: (v) => v.docs({ ...pruning, single_file: o.singleFile, ...lang }),
+    },
+    // The engine returns the statistics as an object.
+    stats: {
+      ext: ".stats.json",
+      run: (v) => JSON.stringify(v.stats({ ...pruning }), null, 2),
     },
     ossie: {
-      ext: `.ossie.${format}`,
-      run: (v) => LinkML.ossie(v, pruningMode, treeRoot, format),
+      ext: `.ossie.${o.format}`,
+      run: (v) => v.ossie({ ...pruning, format: o.format, ...lang }),
     },
     scala: {
       multi: true,
-      run: (v) => LinkML.scala(v, packageName),
+      run: (v) =>
+        v.scala({
+          package: o.packageName,
+          error_handling: o.errorHandling,
+          generate_emit_prefixes: o.generateEmitPrefixes,
+          skip_leaf_interfaces: o.skipLeafInterfaces,
+          ...lang,
+        }),
     },
   };
 }
@@ -200,55 +278,61 @@ function buildGenerators({
 // Importer registry: the other direction – read a document in some other format
 // and produce the LinkML schema it describes (the CLI's `from <name>`). The
 // input is not a LinkML schema, so it is passed through as text rather than
-// loaded into a SchemaView.
+// loaded into a SchemaView. Both return `{ schema, warnings }`, the warnings
+// listing what could not be imported.
 // ---------------------------------------------------------------------------
 function buildImporters({
   schemaId,
   format,
+  fullUris,
   owlConfig,
-  listNotImported,
   importMap,
   inputFormat,
 }) {
+  const output = { schema_id: schemaId || undefined, format, full_uris: fullUris };
   return {
     ossie: {
       ext: `.linkml.${format}`,
-      run: (text) => LinkML.fromOssie(text, schemaId || undefined, format),
+      run: (text) => LinkML.fromOssie(text, output),
     },
     owl: {
       ext: `.linkml.${format}`,
       run: (text) =>
-        LinkML.fromOwl(
-          text,
-          withSchemaId(owlConfig, schemaId),
-          format,
-          listNotImported,
-          importMap,
-          inputFormat
-        ),
+        LinkML.fromOwl(text, {
+          ...output,
+          config: owlConfig,
+          input_format: inputFormat,
+          schemas: importMap,
+        }),
     },
   };
 }
 
-// The OWL importer takes the schema id from its config rather than as an
-// argument, so `schema-id` is written into the config, replacing any
-// `schema_id` already there (as the CLI's --schema-id does). The config is
-// YAML or JSON text; JSON is merged as an object, YAML gets the line replaced
-// or appended (a JSON string is a valid YAML scalar).
-function withSchemaId(config, schemaId) {
-  if (!schemaId) return config || undefined;
-  if (!config.trim()) return JSON.stringify({ schema_id: schemaId });
-  if (config.trim().startsWith("{")) {
-    try {
-      return JSON.stringify({ ...JSON.parse(config), schema_id: schemaId });
-    } catch {
-      // Not JSON after all (a YAML flow mapping) – treat it as YAML.
-    }
+// Read the OWL import config: a YAML (or JSON, which is YAML too) file that the
+// engine takes as an object. Returns undefined when there is none, and null
+// (after failing the run) when it is missing or isn't a mapping. Checking the
+// fields is left to the engine, which names a field it doesn't know.
+function readOwlConfig(baseDir) {
+  const input = getInput("config");
+  if (!input) return undefined;
+  const file = path.resolve(baseDir, input);
+  const rel = path.relative(process.cwd(), file);
+  if (!fs.existsSync(file)) {
+    fail(`config file not found: ${rel}`);
+    return null;
   }
-  const line = `schema_id: ${JSON.stringify(schemaId)}`;
-  return /^schema_id\s*:/m.test(config)
-    ? config.replace(/^schema_id\s*:.*$/m, line)
-    : `${config.replace(/\n?$/, "\n")}${line}\n`;
+  let config;
+  try {
+    config = parseYaml(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    fail(`config ${rel} is not valid YAML or JSON: ${errMessage(e)}`);
+    return null;
+  }
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    fail(`config ${rel} must be a mapping of settings, e.g. 'schema_id: https://…'.`);
+    return null;
+  }
+  return config;
 }
 
 // Import-map key for a file: its path relative to the base directory, in POSIX
@@ -613,11 +697,12 @@ function runGenerate(
 // ---------------------------------------------------------------------------
 // Importing is the opposite of generating: the inputs are documents in another
 // format, so there is no schema to load and no validation report to go with it.
-// The only problem an import can produce is the engine rejecting the document,
-// which is surfaced the same way as a generator throwing – as a synthetic fatal
-// issue, so it stays annotated, counted and silenceable via `ignore`.
+// The engine can reject a document, which is surfaced the same way as a
+// generator throwing – as a synthetic fatal issue, so it stays annotated,
+// counted and silenceable via `ignore`. It also lists what it could not import;
+// with `list-not-imported` each of those is reported as a `NotImported` warning.
 // ---------------------------------------------------------------------------
-function runImport(files, imp, impName, outDir, ignore) {
+function runImport(files, imp, impName, outDir, listNotImported, strict, ignore) {
   let problems = 0;
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   for (const file of files) {
@@ -643,9 +728,22 @@ function runImport(files, imp, impName, outDir, ignore) {
       continue;
     }
 
-    info(`✓ ${rel}`);
-    if (outDir) writeSingle(outDir, file, result, imp.ext);
-    else info(`----- ${rel} → LinkML -----\n${result}`);
+    let failed = false;
+    if (listNotImported) {
+      const issues = (result.warnings ?? []).map((w) => ({
+        issue_type: "NotImported",
+        severity: "WARNING",
+        message: `Not imported: ${w}`,
+      }));
+      const reported = reportIssues(issues, rel, strict, ignore);
+      problems += reported.kept;
+      failed = reported.failed;
+      if (failed) process.exitCode = 1;
+    }
+
+    info(`${failed ? "✗" : "✓"} ${rel}`);
+    if (outDir) writeSingle(outDir, file, result.schema, imp.ext);
+    else info(`----- ${rel} → LinkML -----\n${result.schema}`);
   }
   return problems;
 }
@@ -707,30 +805,35 @@ function main() {
     );
   } else if (command === "generate") {
     const genName = getInput("generator").toLowerCase();
-    const format = resolveFormat(
-      GENERATOR_FORMATS,
-      genName,
-      getInput("format").toLowerCase()
-    );
-    if (format === null) return;
+    const format = resolveFor(GENERATOR_FORMATS, genName, "format");
+    const errorHandling = resolveFor(ERROR_HANDLING, genName, "error-handling");
+    if (format === null || errorHandling === null) return;
     // Blank leaves the choice to the generator, whose defaults differ.
     const modeInput = getInput("pruning-mode").toLowerCase();
     if (modeInput && !Object.hasOwn(PRUNING_MODES, modeInput)) {
       fail(
-        `Unknown pruning-mode '${modeInput}'. Expected one of: ${Object.values(
-          PRUNING_MODES
-        ).join(", ")}.`
+        `Unknown pruning-mode '${modeInput}'. Expected one of: tree_root, schema, skip.`
       );
       return;
     }
     const metadataProfile = resolveChoice("metadata-profile");
     const permissibleValues = resolveChoice("permissible-values");
     const target = resolveChoice("target");
-    if ([metadataProfile, permissibleValues, target].includes(null)) return;
+    const treeRootInlineType = resolveChoice("tree-root-inline-type");
+    const indentationStep = resolveCount("indentation-step");
+    const resolved = [
+      metadataProfile,
+      permissibleValues,
+      target,
+      treeRootInlineType,
+      indentationStep,
+    ];
+    if (resolved.includes(null)) return;
     const generators = buildGenerators({
       open: getBool("open"),
       packageName: getInput("package", "linkml"),
-      format,
+      format: format || undefined,
+      errorHandling: errorHandling || undefined,
       pruningMode: modeInput ? PRUNING_MODES[modeInput] : undefined,
       treeRoot: getInput("tree-root") || undefined,
       skipClassesWithoutIdentifier: getBool("skip-classes-without-identifier"),
@@ -742,6 +845,14 @@ function main() {
       optionalMarker: getBool("optional-marker", true),
       target,
       derivedAttributes: getBool("derived-attributes"),
+      metadataLanguage: getInput("metadata-language") || undefined,
+      fullUris: getBool("full-uris"),
+      treeRootInlineType,
+      indentationStep,
+      optionalDefaults: getBool("optional-defaults"),
+      singleFile: getBool("single-file"),
+      generateEmitPrefixes: getBool("generate-emit-prefixes", true),
+      skipLeafInterfaces: getBool("skip-leaf-interfaces", true),
     });
     const gen = generators[genName];
     if (!gen) {
@@ -767,28 +878,19 @@ function main() {
     );
   } else if (command === "import") {
     const impName = getInput("importer").toLowerCase();
-    const format = resolveFormat(
-      IMPORTER_FORMATS,
-      impName,
-      getInput("format").toLowerCase()
-    );
+    const format = resolveFor(IMPORTER_FORMATS, impName, "format");
     if (format === null) return;
     const inputFormat = resolveChoice("input-format");
     if (inputFormat === null) return;
-    const schemaId = getInput("schema-id");
-    const configPath = getInput("config")
-      ? path.resolve(baseDir, getInput("config"))
-      : "";
-    if (configPath && !fs.existsSync(configPath)) {
-      fail(`config file not found: ${path.relative(process.cwd(), configPath)}`);
-      return;
-    }
     const owl = impName === "owl";
+    const owlConfig = owl ? readOwlConfig(baseDir) : undefined;
+    if (owlConfig === null) return;
+    const schemaId = getInput("schema-id");
     const importers = buildImporters({
       schemaId,
       format,
-      owlConfig: owl && configPath ? fs.readFileSync(configPath, "utf8") : "",
-      listNotImported: getBool("list-not-imported"),
+      fullUris: getBool("full-uris"),
+      owlConfig,
       // The config maps `owl:imports` to LinkML imports, which are relative to
       // where the schema is written – so key the schemas from there.
       importMap: owl
@@ -797,7 +899,7 @@ function main() {
             [],
             getInput("imports") ? path.resolve(baseDir, getInput("imports")) : ""
           )
-        : {},
+        : undefined,
       inputFormat,
     });
     const imp = importers[impName];
@@ -819,7 +921,15 @@ function main() {
       );
       return;
     }
-    problems = runImport(files, imp, impName, outputDir(), ignore);
+    problems = runImport(
+      files,
+      imp,
+      impName,
+      outputDir(),
+      getBool("list-not-imported"),
+      strict,
+      ignore
+    );
   } else {
     fail(
       `Unknown command '${command}'. Expected 'validate', 'generate' or 'import'.`

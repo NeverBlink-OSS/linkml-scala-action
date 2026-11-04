@@ -777,6 +777,186 @@ run("import-map with an empty prefix location loads from working-directory", {
   "import-map": "empty.json",
 }, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map-here/model.yaml"], stdoutExcludes: ["::error"] });
 
+// --- linkml-scala 0.18: docs, stats and the new options ----------------------
+
+run("generate docs writes a page per element under <schema>/", {
+  command: "generate",
+  generator: "docs",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, {
+  code: 0,
+  filesExist: [
+    path.join(path.relative(ROOT, outDir), "person", "index.md"),
+    path.join(path.relative(ROOT, outDir), "person", "classes", "person.md"),
+  ],
+});
+
+run("single-file writes the docs as one docs.md", {
+  command: "generate",
+  generator: "docs",
+  "single-file": "true",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["----- docs.md -----"], stdoutExcludes: ["----- index.md -----"] });
+
+run("generate stats writes JSON (.stats.json)", {
+  command: "generate",
+  generator: "stats",
+  files: "examples/person.yaml",
+  output: path.relative(ROOT, outDir),
+}, { code: 0, filesExist: [path.join(path.relative(ROOT, outDir), "person.stats.json")] });
+
+run("pruning-mode takes tree_root", {
+  command: "generate",
+  generator: "graphql",
+  "pruning-mode": "tree_root",
+  "tree-root": "Address",
+  files: "examples/tables.yaml",
+}, { code: 0, stdoutIncludes: ["type Address"], stdoutExcludes: ["type Person"] });
+
+run("include-null lets optional JSON Schema values be null", {
+  command: "generate",
+  generator: "json-schema",
+  "include-null": "true",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ['"type": "null"'] });
+
+run("tree-root-inline-type changes the root of the JSON Schema", {
+  command: "generate",
+  generator: "json-schema",
+  "tree-root-inline-type": "list",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ['"type": "array"'] });
+
+run("an unknown tree-root-inline-type fails", {
+  command: "generate",
+  generator: "json-schema",
+  "tree-root-inline-type": "tree",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown tree-root-inline-type", "plain, optional"] });
+
+run("indentation-step sets the indentation of the JSON Schema", {
+  command: "generate",
+  generator: "json-schema",
+  "indentation-step": "4",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ['\n    "$schema"'] });
+
+run("indentation-step must be a number", {
+  command: "generate",
+  generator: "json-schema",
+  "indentation-step": "wide",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["indentation-step must be a whole number"] });
+
+run("full-uris writes URIs in full", {
+  command: "generate",
+  generator: "linkml",
+  "full-uris": "true",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["class_uri: https://example.org/Person"] });
+
+run("metadata-language picks the language of descriptions", {
+  command: "generate",
+  generator: "pydantic",
+  "metadata-language": "de",
+  files: "test/fixtures/options.yaml",
+}, { code: 0, stdoutIncludes: ["Einstellungen eines Widgets."], stdoutExcludes: ["Settings of a widget."] });
+
+run("optional-defaults makes slots with ifabsent optional in TypeScript", {
+  command: "generate",
+  generator: "typescript",
+  "optional-defaults": "true",
+  files: "test/fixtures/options.yaml",
+}, { code: 0, stdoutIncludes: ["retries?: number"] });
+
+run("scala writes a Prefixes object for emit_prefixes by default", {
+  command: "generate",
+  generator: "scala",
+  files: "test/fixtures/options.yaml",
+}, { code: 0, stdoutIncludes: ["----- Prefixes.scala -----"] });
+
+run("generate-emit-prefixes: false leaves the Prefixes object out", {
+  command: "generate",
+  generator: "scala",
+  "generate-emit-prefixes": "false",
+  files: "test/fixtures/options.yaml",
+}, { code: 0, stdoutExcludes: ["Prefixes.scala"] });
+
+run("skip-leaf-interfaces: false gives every class an Impl", {
+  command: "generate",
+  generator: "scala",
+  "skip-leaf-interfaces": "false",
+  files: "examples/person.yaml",
+}, { code: 0, stdoutIncludes: ["PersonImpl"] });
+
+// `error-handling` takes different values for scala and typescript.
+run("error-handling: either is taken for scala", {
+  command: "generate",
+  generator: "scala",
+  "error-handling": "either",
+  files: "examples/person.yaml",
+}, { code: 0 });
+
+run("error-handling: either is rejected for typescript", {
+  command: "generate",
+  generator: "typescript",
+  "error-handling": "either",
+  files: "examples/person.yaml",
+}, { code: 1, stdoutIncludes: ["Unknown error-handling", "exception, result"] });
+
+run("list-not-imported reports what was left out as a warning", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  "list-not-imported": "true",
+  files: "../owl/employee.ttl",
+}, { code: 0, stdoutIncludes: ["::warning", "[NotImported]"] });
+
+run("without list-not-imported nothing is reported", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  files: "../owl/employee.ttl",
+}, { code: 0, stdoutExcludes: ["::warning", "NotImported"] });
+
+run("strict fails on what could not be imported", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  "list-not-imported": "true",
+  strict: "true",
+  files: "../owl/employee.ttl",
+}, { code: 1, stdoutIncludes: ["[NotImported]"] });
+
+run("NotImported can be silenced with ignore", {
+  command: "import",
+  importer: "owl",
+  "working-directory": "test/fixtures/imports",
+  config: "../owl/imports-config.yaml",
+  "list-not-imported": "true",
+  strict: "true",
+  ignore: "NotImported",
+  files: "../owl/employee.ttl",
+}, { code: 0, stdoutIncludes: ["(ignored)"], stdoutExcludes: ["::warning"] });
+
+run("a config that is not YAML fails", {
+  command: "import",
+  importer: "owl",
+  config: "test/fixtures/owl/bad-config.yaml",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["is not valid YAML or JSON"] });
+
+run("a config that is not a mapping fails", {
+  command: "import",
+  importer: "owl",
+  config: "test/fixtures/owl/list-config.yaml",
+  files: "test/fixtures/owl/person.ttl",
+}, { code: 1, stdoutIncludes: ["must be a mapping"] });
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} test(s) failed.` : "\nAll tests passed.");
 process.exit(failures ? 1 : 0);

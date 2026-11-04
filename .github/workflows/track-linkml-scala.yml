@@ -153,7 +153,7 @@ jobs:
           sha="$(git rev-parse HEAD)"
 
           cat > release-notes.md <<EOF
-          Tracks [linkml-scala v$TARGET](https://github.com/NeverBlink-OSS/linkml-scala/releases/tag/v$TARGET).
+          Tracks [ohi LinkML v$TARGET](https://github.com/NeverBlink-OSS/ohi/releases/tag/v$TARGET).
 
           Bundles \`@neverblink/linkml@$TARGET\`.
 
