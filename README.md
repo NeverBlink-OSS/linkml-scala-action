@@ -1,6 +1,6 @@
 # linkml-scala-action
 
-A GitHub Action to **validate**, **generate from** and **import into** [LinkML](https://linkml.io) schemas in CI, powered by [ohi LinkML](https://linkml.ohi.dev) (formerly linkml-scala).
+A GitHub Action to **validate**, **generate from** and **import into** [LinkML](https://linkml.ohi.dev) schemas in CI, powered by [ohi LinkML](https://github.com/NeverBlink-OSS/ohi) (formerly linkml-scala).
 
 - 🚀 **Pure Node.js** – no Docker, no JVM, no Python, no binary download. Uses the [`@neverblink/linkml`](https://www.npmjs.com/package/@neverblink/linkml) npm package.
 - 🖥️ **Runs everywhere** – Linux, macOS, and Windows runners.
