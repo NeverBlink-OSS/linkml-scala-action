@@ -5,7 +5,7 @@ import { parse as parseYaml } from "yaml";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.18.0";
+const LINKML_VERSION = "0.18.1";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
