@@ -33819,6 +33819,9 @@ $p.aJl = function(x, skipId, prefixes) {
   kvs.e($m_Lorg_virtuslab_yaml_Node$ScalarNode$().c("warnings"), $p_Leu_neverblink_linkml_js_LinkMlJsApi$__e2$19__sci_Seq__Z__Leu_neverblink_linkml_runtime_PrefixMap__Lorg_virtuslab_yaml_Node(this, x.a4h, false, prefixes));
   return new $c_Lorg_virtuslab_yaml_Node$MappingNode(kvs.ad(), $m_Lorg_virtuslab_yaml_Tag$().a5, $m_s_None$());
 };
+$p.lint = function(arg, ...rest) {
+  return this.aOi(arg, rest[0] === void 0 || !!rest[0]);
+};
 Object.defineProperty($p, "fromOwl$default$2", {
   "get": function() {
     return void 0;
@@ -33861,24 +33864,21 @@ Object.defineProperty($p, "loadFromString$default$4", {
   },
   "configurable": true
 });
+$p.fromOwl = function(arg, ...rest) {
+  return this.aL9(arg, rest[0] === void 0 ? void 0 : rest[0]);
+};
 Object.defineProperty($p, "loadFromPath$default$4", {
   "get": function() {
     return void 0;
   },
   "configurable": true
 });
-$p.fromOwl = function(arg, ...rest) {
-  return this.aL9(arg, rest[0] === void 0 ? void 0 : rest[0]);
-};
 Object.defineProperty($p, "loadFromPath$default$3", {
   "get": function() {
     return true;
   },
   "configurable": true
 });
-$p.lint = function(arg, ...rest) {
-  return this.aOi(arg, rest[0] === void 0 || !!rest[0]);
-};
 var $d_Leu_neverblink_linkml_js_LinkMlJsApi$ = new $TypeData().i($c_Leu_neverblink_linkml_js_LinkMlJsApi$, "eu.neverblink.linkml.js.LinkMlJsApi$", {
   qo: 1
 });
@@ -34091,18 +34091,15 @@ $p.aQT = function(params) {
 $p.aRg = function(params) {
   return $f_Leu_neverblink_linkml_generator_JsonDocumentGenerator__serialize__O__T(new $c_Leu_neverblink_linkml_generator_translation_TranslationGenerator(this.mE), $m_Leu_neverblink_linkml_js_SchemaViewJs$().nz(params, $m_Leu_neverblink_linkml_js_SchemaViewJs$().aLX()));
 };
-Object.defineProperty($p, "linkml$default$1", {
-  "get": function() {
-    return void 0;
-  },
-  "configurable": true
-});
 Object.defineProperty($p, "pydantic$default$1", {
   "get": function() {
     return void 0;
   },
   "configurable": true
 });
+$p.java = function(...rest) {
+  return this.aNR(rest[0] === void 0 ? void 0 : rest[0]);
+};
 $p.jsonSchema = function(...rest) {
   return this.aOa(rest[0] === void 0 ? void 0 : rest[0]);
 };
@@ -34112,9 +34109,6 @@ Object.defineProperty($p, "graphql$default$1", {
   },
   "configurable": true
 });
-$p.java = function(...rest) {
-  return this.aNR(rest[0] === void 0 ? void 0 : rest[0]);
-};
 $p.frictionless = function(...rest) {
   return this.aKZ(rest[0] === void 0 ? void 0 : rest[0]);
 };
@@ -34199,8 +34193,17 @@ Object.defineProperty($p, "typescript$default$1", {
 $p.erDiagram = function(...rest) {
   return this.aIL(rest[0] === void 0 ? void 0 : rest[0]);
 };
+Object.defineProperty($p, "linkml$default$1", {
+  "get": function() {
+    return void 0;
+  },
+  "configurable": true
+});
 $p.linkml = function(...rest) {
   return this.aOh(rest[0] === void 0 ? void 0 : rest[0]);
+};
+$p.owl = function(...rest) {
+  return this.aPd(rest[0] === void 0 ? void 0 : rest[0]);
 };
 Object.defineProperty($p, "rdfs$default$1", {
   "get": function() {
@@ -34208,9 +34211,6 @@ Object.defineProperty($p, "rdfs$default$1", {
   },
   "configurable": true
 });
-$p.owl = function(...rest) {
-  return this.aPd(rest[0] === void 0 ? void 0 : rest[0]);
-};
 $p.stats = function(...rest) {
   return this.aQT(rest[0] === void 0 ? void 0 : rest[0]);
 };
@@ -72728,7 +72728,7 @@ function $c_Leu_neverblink_linkml_schemaview_buildinfo_BuildConstants$() {
   this.ah0 = "1.12.0";
   this.ah1 = "1.22.0";
   this.ah2 = "3.9.0";
-  this.ah3 = "0.18.5";
+  this.ah3 = "0.18.6";
   $m_sci_Map$().hj($ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), [$ct_T2__O__O__(new $c_T2(), "version", this.ah3), $ct_T2__O__O__(new $c_T2(), "scalaVersion", this.ah2), $ct_T2__O__O__(new $c_T2(), "scalaJsVersion", this.ah1), $ct_T2__O__O__(new $c_T2(), "metamodelVersion", this.ah0)]));
 }
 $p = $c_Leu_neverblink_linkml_schemaview_buildinfo_BuildConstants$.prototype = new $h_O();
@@ -220454,7 +220454,7 @@ function resolveFiles(spec, baseDir) {
 }
 
 // src/index.js
-var LINKML_VERSION = "0.18.5";
+var LINKML_VERSION = "0.18.6";
 function getInput(name, def = "") {
   const key = "INPUT_" + name.toUpperCase().replace(/ /g, "_");
   const v = process.env[key];
