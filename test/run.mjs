@@ -752,12 +752,12 @@ run("an import-map whose locations aren't strings fails", {
   "import-map": "not-strings.json",
 }, { code: 1, stdoutIncludes: ["must be a JSON object from an import"] });
 
-run("an import-map with a CURIE key is rejected by the engine", {
+run("an import-map with a CURIE key resolves the import", {
   command: "validate",
   files: "model.yaml",
   "working-directory": IMPORT_MAP,
   "import-map": "curie-key.json",
-}, { code: 1, stdoutIncludes: ["::error", "is a CURIE"] });
+}, { code: 0, stdoutIncludes: ["✓ test/fixtures/import-map/model.yaml"], stdoutExcludes: ["::error"] });
 
 // A prefix entry whose location is working-directory itself: `./` and an empty
 // location both load `units:core` from core.yaml next to model.yaml.

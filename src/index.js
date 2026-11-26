@@ -5,7 +5,7 @@ import { parse as parseYaml } from "yaml";
 import { resolveFiles } from "./glob.js";
 
 // Kept in sync with the bundled @neverblink/linkml dependency (see package.json).
-const LINKML_VERSION = "0.18.6";
+const LINKML_VERSION = "0.18.7";
 
 // ---------------------------------------------------------------------------
 // Minimal GitHub Actions runtime helpers (no @actions/core dependency).
@@ -402,7 +402,7 @@ const isUri = (s) => /^[a-z][a-z0-9+.-]+:/i.test(s);
 // CLI takes them relative to the current directory), and returned in `paths`
 // so it can be read into the pool. Returns undefined when the input is blank,
 // and null (after failing the run) when the file is missing or malformed.
-// Checking the entries themselves (CURIE keys, conflicting entries) is left to
+// Checking the entries themselves (e.g. conflicting entries) is left to
 // the engine, which reports a bad one on every schema it loads.
 // ---------------------------------------------------------------------------
 function readImportMap(baseDir) {

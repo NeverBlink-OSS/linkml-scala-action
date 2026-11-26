@@ -2,6 +2,14 @@
 
 Notes for breaking changes and new features in releases from v0.15.0 on. Earlier releases are described on the [Releases page](https://github.com/NeverBlink-OSS/linkml-scala-action/releases).
 
+## v0.18.7
+
+Bundles [`@neverblink/linkml@0.18.7`](https://github.com/NeverBlink-OSS/ohi/releases/tag/v0.18.7).
+
+### Changed
+
+- `import-map` keys can now be CURIEs, such as `units:core`. They used to be rejected.
+
 ## v0.18.0
 
 Bundles [`@neverblink/linkml@0.18.0`](https://github.com/NeverBlink-OSS/ohi/releases/tag/v0.18.0). linkml-scala is now called [ohi LinkML](https://linkml.ohi.dev).
